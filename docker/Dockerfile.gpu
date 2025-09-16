@@ -1,0 +1,19 @@
+FROM infiniflow/ragflow:v0.20.5-slim
+
+RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg ca-certificates && \
+    wget https://developer.download.nvidia.com/compute/cuda/repos/ubuntu2204/x86_64/cuda-keyring_1.1-1_all.deb && \
+    dpkg -i cuda-keyring_1.1-1_all.deb && rm -f cuda-keyring_1.1-1_all.deb && \
+    apt-get update && \
+    apt-get install -y --no-install-recommends \
+      cuda-libraries-12-4 \
+      cuda-cudart-12-4 \
+      libcudnn9-cuda-12 \
+      libcudnn9-cuda-12-dev \
+      python3-requests && \
+    rm -rf /var/lib/apt/lists/*
+
+ENV LD_LIBRARY_PATH=/usr/local/cuda/lib64:/usr/lib/x86_64-linux-gnu:${LD_LIBRARY_PATH}
+
+# Optional: if base doesn't include GPU ORT, uncomment to force install
+# RUN pip install --no-cache-dir onnxruntime-gpu==1.18.0
+

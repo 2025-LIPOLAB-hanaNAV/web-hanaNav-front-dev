@@ -1,0 +1,18 @@
+node_modules
+
+# Env files (keep only example tracked)
+.env*
+!.env.example
+
+# Build outputs
+build
+dist
+
+# Logs and OS/editor cruft
+*.log
+.DS_Store
+.vscode/
+coverage/
+.vercel/
+.next/
+npm-debug.log*

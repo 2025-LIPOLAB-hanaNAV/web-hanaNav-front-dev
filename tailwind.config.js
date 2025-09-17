@@ -88,6 +88,10 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        "seg-track": "var(--seg-track)",
+        "seg-track-border": "var(--seg-track-border)",
+        "seg-label-muted": "var(--seg-label-muted)",
+        "seg-thumb": "var(--seg-thumb)",
       },
       boxShadow: {
         'xs': 'var(--shadow-xs)',
@@ -97,6 +101,7 @@ export default {
         'xl': 'var(--shadow-xl)',
         '2xl': 'var(--shadow-2xl)',
         'glass': 'var(--glass-shadow)',
+        'seg-track': 'var(--seg-track-shadow)',
       },
       backdropBlur: {
         'xs': 'var(--blur-sm)',
@@ -125,8 +130,33 @@ export default {
         sm: "calc(var(--radius) - 4px)",
       },
       fontFamily: {
-        sans: ["Inter", "system-ui", "sans-serif"],
-        jua: ["Jua", "cursive"],
+        sans: ["Noto Sans KR", "Apple SD Gothic Neo", "Noto Sans", "system-ui", "sans-serif"],
+        body: ["Noto Sans KR", "Apple SD Gothic Neo", "Noto Sans", "system-ui", "sans-serif"],
+        display: ["Noto Sans KR", "Apple SD Gothic Neo", "Noto Sans", "system-ui", "sans-serif"],
+      },
+      fontWeight: {
+        thin: '100',
+        extralight: '200',
+        light: '300',
+        normal: '400',
+        medium: '500',
+        semibold: '600',
+        bold: '700',
+        extrabold: '800',
+        black: '900',
+      },
+      fontSize: {
+        xs: ['0.75rem', { lineHeight: '1rem' }],      // 12px
+        sm: ['0.875rem', { lineHeight: '1.375rem' }], // 14px/22px
+        base: ['1rem', { lineHeight: '1.73rem' }],    // 16px/~28px
+        lg: ['1.125rem', { lineHeight: '1.75rem' }],  // 18px
+        xl: ['1.25rem', { lineHeight: '1.75rem' }],   // 20px
+        '2xl': ['1.5rem', { lineHeight: '2rem' }],    // 24px
+        '3xl': ['1.75rem', { lineHeight: '2.25rem' }], // 28px
+        '4xl': ['2rem', { lineHeight: '2.6rem' }],    // 32px/40px (h2)
+        '5xl': ['2.5rem', { lineHeight: '3rem' }],    // 40px
+        '6xl': ['3rem', { lineHeight: '3.6rem' }],    // 48px/56px (h1)
+        '7xl': ['3.5rem', { lineHeight: '4.3rem' }],  // 56px
       },
       keyframes: {
         "accordion-down": {
@@ -168,6 +198,7 @@ export default {
           'background-clip': 'text',
           '-webkit-text-fill-color': 'transparent',
         },
+        // Typography utility classes temporarily removed for debugging
       })
     },
   ],

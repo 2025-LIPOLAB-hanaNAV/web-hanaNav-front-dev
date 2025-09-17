@@ -8,7 +8,8 @@ import {
   Bookmark, Pin, Calendar, Share2, Link2, Upload, Download, Copy,
   Filter, Settings, Home, ShieldCheck, PiggyBank, CreditCard, Coins,
   Route, Users, Navigation, Loader2, RefreshCw, Database, MapPin,
-  BookmarkCheck, MoreHorizontal, ExternalLink, Eye, Clock
+  BookmarkCheck, MoreHorizontal, ExternalLink, Eye, Clock, X,
+  ShieldAlert, ChevronLeft, ChevronRight, Menu
 } from "lucide-react";
 
 const ICONS = {
@@ -52,6 +53,11 @@ const ICONS = {
   "external-link": ExternalLink,
   "eye": Eye,
   "clock": Clock,
+  "x": X,
+  "shield-alert": ShieldAlert,
+  "chevron-left": ChevronLeft,
+  "chevron-right": ChevronRight,
+  "menu": Menu,
 } as const;
 
 export type IconName = keyof typeof ICONS;

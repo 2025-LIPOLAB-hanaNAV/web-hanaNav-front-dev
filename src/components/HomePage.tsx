@@ -3,9 +3,8 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { SearchBar } from './SearchBar';
-import { Icon } from './ui/Icon';
+import { Icon } from './atoms/Icon/Icon';
 import { cn } from './ui/utils';
-import { ImageWithFallback } from './figma/ImageWithFallback';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 
 interface PopularQuestion {
@@ -129,11 +128,11 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                   size={120} 
                   className="animate-pulse opacity-90 hover:opacity-100 transition-opacity duration-1000" 
                 />
-                <h1 className="text-display font-extrabold text-foreground leading-tight">
+                <h1 className="hero-title text-[56px] leading-[70px] font-extrabold text-foreground font-display">
                   어디로 떠나시겠어요?
                 </h1>
               </div>
-              <p className="text-subtitle max-w-3xl mx-auto">
+              <p className="text-lg lg:text-xl max-w-3xl mx-auto text-muted-foreground font-body font-normal">
                 당신의 여정에 함께할게요.
               </p>
             </div>
@@ -156,7 +155,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
         {/* Popular Questions */}
         <section>
           <div className="flex items-center gap-4 mb-8">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
+            <h2 className="text-2xl font-semibold flex items-center gap-3">
               <Icon name="star" size={28} className="text-primary" />
               인기 방문지
             </h2>
@@ -164,14 +163,14 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
           
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {popularQuestions.map((question) => (
-              <Card 
+              <Card
                 key={question.id}
-                className="card-enhanced p-6 hover:shadow-xl cursor-pointer transition-all duration-300 hover:scale-[1.02] h-full bg-[rgba(255,255,255,0.7)]"
+                className="card-enhanced p-6 hover:shadow-xl cursor-pointer transition-all duration-300 hover:scale-[1.02] h-full"
                 onClick={() => onQuestionClick(question.question)}
               >
                 <div className="flex flex-col h-full gap-4">
                   <div className="flex-1">
-                    <p className="text-base font-semibold text-foreground mb-4 leading-relaxed">{question.question}</p>
+                    <p className="text-base font-normal text-foreground mb-4 leading-relaxed font-body">{question.question}</p>
                     <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
                       <Badge variant="outline" className="text-sm font-medium px-3 py-1 shrink-0">
                         {question.category}
@@ -189,9 +188,9 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
         </section>
 
         {/* Preset Routes */}
-        <section>
+        <section className="font-sans">
           <div className="flex items-center gap-4 mb-8">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
+            <h2 className="text-2xl font-semibold flex items-center gap-3 font-sans">
               <Icon name="route" size={28} className="text-primary" />
               상황별 프리셋 경로
             </h2>
@@ -199,9 +198,9 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
           
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {presetRoutes.map((route) => (
-              <Card 
+              <Card
                 key={route.id}
-                className="card-enhanced p-8 hover:shadow-xl cursor-pointer transition-all duration-300 group hover:scale-[1.02] bg-[rgba(255,255,255,0.7)]"
+                className="card-enhanced p-8 hover:shadow-xl cursor-pointer transition-all duration-300 group hover:scale-[1.02]"
                 onClick={() => onPresetClick(route)}
               >
                 <div className="flex items-start justify-between">
@@ -209,7 +208,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                     <div className="flex items-center gap-4 mb-4">
                       <span className="text-4xl">{route.icon}</span>
                       <div>
-                        <h3 className="text-xl font-bold group-hover:text-primary transition-colors mb-2">
+                        <h3 className="text-xl font-semibold group-hover:text-primary transition-colors mb-2">
                           {route.title}
                         </h3>
                         <Badge variant="outline" className="text-sm font-semibold px-3 py-1">
@@ -237,9 +236,9 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
         </section>
 
         {/* Department Shortcuts */}
-        <section className="bg-[rgba(0,0,0,0)]">
+        <section className="bg-transparent font-sans">
           <div className="flex items-center gap-4 mb-8">
-            <h2 className="text-2xl font-bold flex items-center gap-3">
+            <h2 className="text-2xl font-semibold flex items-center gap-3 font-sans">
               <Icon name="users" size={28} className="text-primary" />
               부서별 자주 찾는 항목
             </h2>
@@ -252,8 +251,8 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                   key={dept.id}
                   className={cn(
                     "card-enhanced cursor-pointer transition-all duration-500 hover:scale-110 group overflow-hidden relative",
-                    selectedDepartment === dept.id 
-                      ? "ring-2 ring-primary shadow-2xl shadow-primary/20 bg-gradient-to-br from-primary/20 to-accent/10" 
+                    selectedDepartment === dept.id
+                      ? "ring-2 ring-primary shadow-2xl shadow-primary/20"
                       : "hover:shadow-2xl hover:shadow-primary/10"
                   )}
                   onClick={() => setSelectedDepartment(
@@ -283,7 +282,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                     
                     {/* Department name with enhanced typography */}
                     <div className="flex flex-col items-center gap-2">
-                      <h3 className="text-xl font-bold text-foreground group-hover:text-primary transition-colors duration-300">
+                      <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors duration-300">
                         {dept.name}
                       </h3>
                       <div className="w-12 h-1 bg-gradient-to-r from-primary to-accent rounded-full mx-auto transform scale-0 group-hover:scale-100 transition-transform duration-500" />
@@ -304,8 +303,8 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                 ?.questions.map((question, index) => (
                 <Button
                   key={index}
-                  variant="outline"
-                  className="button-primary text-white font-semibold py-3 px-4 border-0"
+                  variant="default"
+                  className="text-white font-medium py-3 px-4 border-0"
                   onClick={() => onQuestionClick(question)}
                 >
                   {question}

@@ -142,7 +142,7 @@ export function SearchBar({
             </div>
           )}
           
-          <div className="flex items-center gap-4 bg-[rgba(0,0,0,0)] rounded-[0px] w-full max-w-7xl m-[0px] px-[0px] py-[23px]">
+          <div className="flex items-center justify-around bg-[rgba(0,0,0,0)] rounded-[0px] w-full max-w-7xl min-w-[800px] m-[0px] px-4 py-0">
             <Icon name="search" size={24} className="text-muted-foreground flex-shrink-0" />
             
             <Input
@@ -150,7 +150,7 @@ export function SearchBar({
               onChange={(e) => setQuery(e.target.value)}
               placeholder={placeholder}
               className={cn(
-                "border-0 bg-transparent text-xl px-0 shadow-none focus-visible:ring-0 font-normal placeholder:text-muted-foreground/60 placeholder:font-normal py-2 transition-all duration-300",
+                "border-0 bg-transparent text-xl px-0 shadow-none focus-visible:ring-0 font-light placeholder:text-muted-foreground/60 placeholder:font-light py-2 transition-all duration-300",
                 isMagicActive && "text-primary glow-text"
               )}
               disabled={isLoading || isMagicActive}
@@ -178,12 +178,12 @@ export function SearchBar({
               
 
               
-              <Button 
-                type="submit" 
-                size="lg"
+              <Button
+                type="submit"
+                size="sm"
                 disabled={(!query.trim() && attachedFiles.length === 0) || isLoading || isMagicActive}
                 className={cn(
-                  "button-primary text-white font-bold px-10 py-4 border-0 ml-2 transition-all duration-300",
+                  "button-primary text-white font-medium px-6 py-2 border-0 ml-2 transition-all duration-300 text-sm",
                   isMagicActive && "animate-pulse shadow-lg shadow-primary/50"
                 )}
               >

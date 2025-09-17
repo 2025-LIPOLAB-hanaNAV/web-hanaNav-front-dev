@@ -1,14 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
-import { Input } from './ui/input';
-import { listDatasets, listChats, createChat, updateChat, updateChatSession, deleteChatSessions, type ChatAssistant, converseOnce } from '../services/ragflow';
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
+import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, getChatSession, type ChatAssistant, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
 import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
-import { Separator } from './ui/separator';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
 import { SearchBar } from './SearchBar';
@@ -73,38 +70,80 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
   const [assistants, setAssistants] = useState<ChatAssistant[]>([]);
   const [assistantId, setAssistantId] = useState<string>('');
   const [asLoading, setAsLoading] = useState(false);
-  const [asError, setAsError] = useState<string | null>(null);
-  const [isAddAsOpen, setIsAddAsOpen] = useState(false);
-  const [newAsName, setNewAsName] = useState('');
   const [isVoiceActive, setIsVoiceActive] = useState(false);
   const [sessionId, setSessionId] = useState<string | undefined>(undefined);
+  const [sessionCreating, setSessionCreating] = useState(false);
+  const [kbApplying, setKbApplying] = useState(false);
+  const [kbToast, setKbToast] = useState<string | null>(null);
+  const [kbToastType, setKbToastType] = useState<'success' | 'error' | null>(null);
+  // Ephemeral context for attachments
+  const [ephemeralDatasetId, setEphemeralDatasetId] = useState<string | undefined>(undefined);
+  const [ephemeralAssistantId, setEphemeralAssistantId] = useState<string | undefined>(undefined);
+  const [ephemeralStatus, setEphemeralStatus] = useState<'idle' | 'uploading' | 'parsing' | 'ready' | 'error'>('idle');
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const hasExternalSession = useRef(false);
 
   // Initialize session from props
   useEffect(() => {
-    if (initialSession?.assistantId) setAssistantId(initialSession.assistantId);
-    if (initialSession?.sessionId) setSessionId(initialSession.sessionId);
+    if (initialSession?.assistantId) {
+      hasExternalSession.current = true;
+      setAssistantId(initialSession.assistantId);
+    }
+    if (initialSession?.sessionId) {
+      if (initialSession.sessionId !== sessionId) {
+        hasExternalSession.current = true;
+        setMessages([]);
+        setSessionId(initialSession.sessionId);
+      }
+    }
+  }, [initialSession?.assistantId, initialSession?.sessionId, sessionId]);
+
+  // Restore persisted session when no explicit target was provided
+  useEffect(() => {
+    if (initialSession?.assistantId || initialSession?.sessionId) return;
+    try {
+      const raw = localStorage.getItem('hana_current_session');
+      if (raw) {
+        const saved = JSON.parse(raw) as { assistantId?: string; sessionId?: string; ephemeralAssistantId?: string; ephemeralDatasetId?: string };
+        if (saved.assistantId) {
+          hasExternalSession.current = true;
+          setAssistantId(saved.assistantId);
+        }
+        if (saved.sessionId) {
+          hasExternalSession.current = true;
+          setSessionId(saved.sessionId);
+        }
+        if (saved.ephemeralDatasetId) setEphemeralDatasetId(saved.ephemeralDatasetId);
+        if (saved.ephemeralAssistantId) setEphemeralAssistantId(saved.ephemeralAssistantId);
+      }
+    } catch {}
   }, [initialSession?.assistantId, initialSession?.sessionId]);
 
   // Persist current session across navigations
   useEffect(() => {
     try {
-      const raw = localStorage.getItem('hana_current_session');
-      if (raw) {
-        const saved = JSON.parse(raw) as { assistantId?: string; sessionId?: string };
-        if (saved.assistantId) setAssistantId(saved.assistantId);
-        if (saved.sessionId) setSessionId(saved.sessionId);
-      }
-    } catch {}
-  }, []);
-
-  useEffect(() => {
-    try {
-      const payload = JSON.stringify({ assistantId, sessionId });
+      const payload = JSON.stringify({ assistantId, sessionId, ephemeralAssistantId, ephemeralDatasetId });
       localStorage.setItem('hana_current_session', payload);
     } catch {}
-  }, [assistantId, sessionId]);
+  }, [assistantId, sessionId, ephemeralAssistantId, ephemeralDatasetId]);
+
+  // React to deletions triggered outside of ChatPage (e.g., Library bulk delete)
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handler = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string; assistantId?: string }>).detail;
+      if (!detail?.sessionId) return;
+      if (detail.sessionId === sessionId) {
+        setMessages([]);
+        setSessionId(undefined);
+      }
+    };
+    window.addEventListener('hana-session-deleted', handler as EventListener);
+    return () => {
+      window.removeEventListener('hana-session-deleted', handler as EventListener);
+    };
+  }, [sessionId]);
 
   // Restore cached messages for session
   useEffect(() => {
@@ -119,6 +158,76 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
       }
     } catch {}
   }, [sessionId]);
+
+  // Fetch server-side messages for selected session (override cache)
+  useEffect(() => {
+    if (!assistantId || !sessionId) return;
+    let active = true;
+    (async () => {
+      try {
+        const s = await getChatSession(assistantId, sessionId);
+        const msgs = (s.messages || []).filter(m => (m.content || '').trim().length > 0);
+        if (!active) return;
+        if (msgs.length > 0) {
+          const mapped: ChatMessage[] = msgs.map((m, idx) => ({
+            id: `${sessionId}-${idx}`,
+            type: m.role === 'assistant' ? 'assistant' : 'user',
+            content: m.content,
+            timestamp: '',
+          }));
+          setMessages(mapped);
+        }
+      } catch (e) {
+        console.warn('[Chat] getChatSession failed:', (e as any)?.message || e);
+      }
+    })();
+    return () => { active = false; };
+  }, [assistantId, sessionId]);
+
+  // Ephemeral context: ensure assistant/dataset for attachments
+  const ensureEphemeralContext = async (files?: File[]): Promise<string | undefined> => {
+    const hasFiles = (files && files.length > 0);
+    if (!hasFiles && ephemeralAssistantId) return ephemeralAssistantId;
+    if (!hasFiles) return undefined;
+
+    setEphemeralStatus('uploading');
+    try {
+      let dsId = ephemeralDatasetId;
+      if (!dsId) {
+        const ds = await createDataset({ name: `임시 컨텍스트 ${new Date().toLocaleString('ko-KR')}` });
+        dsId = ds.id;
+        setEphemeralDatasetId(dsId);
+      }
+      const docs = await uploadDocuments(dsId!, files!);
+      try { await parseDocuments(dsId!, docs.map(d => d.id)); } catch {}
+      setEphemeralStatus('parsing');
+
+      let eaId = ephemeralAssistantId;
+      if (!eaId) {
+        const activeModel = assistants.find(a => a.id === assistantId)?.llm?.model_name || modelByMode[currentMode];
+        const name = `임시 어시스턴트 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+        const created = await createChat({
+          name,
+          dataset_ids: selectedKBs.length > 0 ? [dsId!, ...selectedKBs] : [dsId!],
+          llm: activeModel ? { model_name: activeModel } : undefined,
+        });
+        eaId = created.id;
+        setEphemeralAssistantId(eaId);
+      } else {
+        const ids = selectedKBs.length > 0 ? [dsId!, ...selectedKBs] : [dsId!];
+        try { await updateChat(eaId, { dataset_ids: ids }); } catch {}
+      }
+
+      setAssistantId(eaId!);
+      setEphemeralStatus('ready');
+      hasExternalSession.current = true;
+      return eaId!;
+    } catch (e) {
+      console.warn('[Ephemeral] setup failed:', (e as any)?.message || e);
+      setEphemeralStatus('error');
+      return undefined;
+    }
+  };
 
   useEffect(() => {
     if (!sessionId) return;
@@ -243,6 +352,45 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
 궁금한 사항이 있으시면 해당 부서 담당자에게 직접 문의하시기 바랍니다.`;
   };
 
+  const ensureSession = async (activeAssistantId: string, initialName: string): Promise<string> => {
+    if (sessionId) return sessionId;
+    setSessionCreating(true);
+    try {
+      const created = await createChatSession(activeAssistantId, { name: initialName || '새 대화' });
+      setSessionId(created.id);
+      hasExternalSession.current = true;
+      return created.id;
+    } finally {
+      setSessionCreating(false);
+    }
+  };
+
+  const applySelectedKnowledgeBases = async () => {
+    const isEphemeral = ephemeralAssistantId && assistantId === ephemeralAssistantId;
+    const activeAssistantId = isEphemeral ? ephemeralAssistantId! : (assistantId || defaultAssistantByMode[currentMode]);
+    if (!activeAssistantId) {
+      alert('어시스턴트를 먼저 선택하세요.');
+      return;
+    }
+    setKbApplying(true);
+    setKbToast(null);
+    setKbToastType(null);
+    try {
+      if (isEphemeral) {
+        const ids = ephemeralDatasetId ? [ephemeralDatasetId, ...selectedKBs] : [...selectedKBs];
+        await updateChat(activeAssistantId, { dataset_ids: ids });
+      }
+      setKbToast(selectedKBs.length === 0 ? '연결된 지식베이스를 초기화했습니다.' : `${selectedKBs.length}개 지식베이스를 적용했습니다.`);
+      setKbToastType('success');
+    } catch (err: any) {
+      setKbToast(err?.message || '지식베이스 적용에 실패했습니다.');
+      setKbToastType('error');
+    } finally {
+      setKbApplying(false);
+      setTimeout(() => { setKbToast(null); setKbToastType(null); }, 4000);
+    }
+  };
+
   const handleSearch = async (query: string, files?: File[]) => {
     if (!query.trim()) return;
 
@@ -272,18 +420,14 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
     setMessages(prev => [...prev, loadingMessage]);
 
     try {
-      const activeAssistantId = assistantId || defaultAssistantByMode[currentMode];
+      const ephemeralId = await ensureEphemeralContext(files);
+      const activeAssistantId = ephemeralId || assistantId || defaultAssistantByMode[currentMode];
       if (!activeAssistantId) throw new Error('어시스턴트를 선택하거나 기본 ID를 설정하세요.');
-      // Bind selected KBs to assistant if provided (API doesn't accept dataset_ids on completions)
-      if (selectedKBs.length > 0) {
-        try {
-          await updateChat(activeAssistantId, { dataset_ids: selectedKBs });
-        } catch (e) {
-          console.warn('[Chat] updateChat dataset_ids failed:', (e as any)?.message || e);
-        }
-      }
+      // Avoid mutating shared assistants here; ephemeral assistant already updated in ensureEphemeralContext
+      const desiredName = query.slice(0, 80) || '새 대화';
+      const ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
       const t0 = Date.now();
-      const result = await converseOnce(activeAssistantId, { question: query, session_id: sessionId });
+      const result = await converseOnce(activeAssistantId, { question: query, session_id: ensuredSessionId });
       const dt = (Date.now() - t0) / 1000;
       if (result.session_id && !sessionId) {
         setSessionId(result.session_id);
@@ -323,10 +467,20 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
     if (!ok) return;
     try {
       await deleteChatSessions(assistantId, [sessionId]);
+      if (ephemeralAssistantId) {
+        try { await deleteChats([ephemeralAssistantId]); } catch {}
+      }
+      if (ephemeralDatasetId) {
+        try { await deleteDatasets([ephemeralDatasetId]); } catch {}
+      }
       try { localStorage.removeItem(`hana_messages_${sessionId}`); } catch {}
       try { localStorage.removeItem('hana_current_session'); } catch {}
+      try { window.dispatchEvent(new CustomEvent('hana-session-deleted', { detail: { assistantId, sessionId } })); } catch {}
       setMessages([]);
       setSessionId(undefined);
+      setEphemeralAssistantId(undefined);
+      setEphemeralDatasetId(undefined);
+      setEphemeralStatus('idle');
     } catch (e: any) {
       alert(e?.message || '세션 삭제에 실패했습니다.');
     }
@@ -375,7 +529,6 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
   // Load chat assistants list
   useEffect(() => {
     setAsLoading(true);
-    setAsError(null);
     listChats({ page: 1, page_size: 100, orderby: 'update_time', desc: true })
       .then(items => {
         // merge defaults if not present
@@ -387,23 +540,17 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
         console.warn('[AS] listChats failed:', err?.message || err);
         // fallback to show defaults so user can still pick env-provided IDs
         if (defaultAssistants.length > 0) setAssistants(defaultAssistants);
-        setAsError('어시스턴트를 불러오지 못했습니다.');
       })
       .finally(() => setAsLoading(false));
   }, []);
 
   // Select default assistant based on mode (if provided via env)
   useEffect(() => {
+    if (hasExternalSession.current) return;
+    if (assistantId) return;
     const defId = defaultAssistantByMode[currentMode];
     if (defId) setAssistantId(defId);
-  }, [currentMode]);
-
-  // Initialize assistant on mount for initial mode
-  useEffect(() => {
-    const defId = defaultAssistantByMode['quick'];
-    if (defId) setAssistantId(defId);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [currentMode, assistantId]);
 
 
   const handleFeedback = (messageId: string, isHelpful: boolean, reason?: string) => {
@@ -466,13 +613,18 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
           </div>
 
           {/* Knowledge Base Selector (Dialog) */}
-          <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsKBOpen(true)}>
-            <Icon name="book-open" size={16} />
-            지식베이스 선택
-            {selectedKBs.length > 0 && (
-              <Badge variant="secondary" className="ml-1">{selectedKBs.length}</Badge>
-            )}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsKBOpen(true)}>
+              <Icon name="book-open" size={16} />
+              지식베이스 선택
+              {selectedKBs.length > 0 && (
+                <Badge variant="secondary" className="ml-1">{selectedKBs.length}</Badge>
+              )}
+            </Button>
+            <Button variant="secondary" size="sm" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
+              {kbApplying ? '적용 중...' : '세션에 적용'}
+            </Button>
+          </div>
           <Dialog open={isKBOpen} onOpenChange={setIsKBOpen}>
             <DialogContent className="max-w-lg">
               <DialogHeader>
@@ -503,7 +655,9 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
                 </div>
                 <div className="flex justify-end gap-2 pt-2">
                   <Button variant="outline" onClick={() => setIsKBOpen(false)}>닫기</Button>
-                  <Button onClick={() => setIsKBOpen(false)}>확인</Button>
+                  <Button onClick={() => { applySelectedKnowledgeBases(); setIsKBOpen(false); }} disabled={kbApplying}>
+                    {kbApplying ? '적용 중...' : '선택 적용'}
+                  </Button>
                 </div>
               </div>
             </DialogContent>
@@ -524,43 +678,37 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
             <Badge variant="secondary" className="ml-1">모델: {assistants.find(a => a.id === assistantId)?.llm?.model_name || modelByMode[currentMode]}</Badge>
           )}
 
-          <Dialog open={isAddAsOpen} onOpenChange={setIsAddAsOpen}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="sm">새 어시스턴트</Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>어시스턴트 생성</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <Input placeholder="이름" value={newAsName} onChange={(e) => setNewAsName(e.target.value)} />
-                <div className="text-xs text-muted-foreground">선택된 지식베이스로 어시스턴트를 생성합니다.</div>
-                {asError && <div className="text-xs text-destructive">{asError}</div>}
-                <div className="flex justify-end gap-2">
-                  <Button variant="outline" onClick={() => setIsAddAsOpen(false)}>취소</Button>
-                  <Button onClick={async () => {
-                    const name = newAsName.trim();
-                    if (!name) return;
-                    if (selectedKBs.length === 0) { setAsError('지식베이스를 선택하세요.'); return; }
-                    try {
-                      const a = await createChat({ name, dataset_ids: selectedKBs, llm: { model_name: modelByMode[currentMode] || modelByMode.quick } });
-                      setAssistants(prev => [a, ...prev]);
-                      setAssistantId(a.id);
-                      setNewAsName('');
-                      setIsAddAsOpen(false);
-                    } catch (err: any) {
-                      setAsError(err?.message || '어시스턴트 생성 실패');
-                    }
-                  }}>생성</Button>
-                </div>
-              </div>
-            </DialogContent>
-          </Dialog>
-
           {/* 파일 관리/데이터셋 생성은 지식베이스 탭으로 이동됨 */}
         </div>
 
-        <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={async () => {
+              const activeAssistantId = assistantId || defaultAssistantByMode[currentMode];
+              if (!activeAssistantId) {
+                alert('어시스턴트를 먼저 선택하세요.');
+                return;
+              }
+              setSessionCreating(true);
+              try {
+                const name = `새 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+                const created = await createChatSession(activeAssistantId, { name });
+                setSessionId(created.id);
+                setMessages([]);
+                hasExternalSession.current = true;
+                try { localStorage.removeItem(`hana_messages_${created.id}`); } catch {}
+              } catch (err: any) {
+                alert(err?.message || '새 세션 생성에 실패했습니다.');
+              } finally {
+                setSessionCreating(false);
+              }
+            }}
+            disabled={sessionCreating}
+          >
+            {sessionCreating ? '세션 생성 중...' : '새 세션'}
+          </Button>
           {assistantId && sessionId && (
             <Button variant="destructive" size="sm" onClick={handleDeleteSession}>
               세션 삭제
@@ -578,6 +726,15 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
           </Button>
         </div>
       </div>
+
+      {kbToast && (
+        <div className={cn(
+          'px-4 pt-2 text-xs',
+          kbToastType === 'error' ? 'text-destructive' : 'text-muted-foreground'
+        )}>
+          {kbToast}
+        </div>
+      )}
 
       {/* Selected KB chips */}
       {selectedKBs.length > 0 && (

@@ -3,18 +3,13 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Input } from './ui/input';
+import { Checkbox } from './ui/checkbox';
 import { Icon } from './ui/Icon';
 import { cn } from './ui/utils';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from './ui/dropdown-menu';
-import { MoreHorizontal, Clock, MessageSquareText, Star } from 'lucide-react';
-import { listChats, listChatSessions, deleteChatSessions } from '../services/ragflow';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
+import { Clock, MessageSquareText, Star } from 'lucide-react';
+import { listChats, listChatSessions, deleteChatSessions, updateChatSession } from '../services/ragflow';
 import { RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 
 type ChatSession = {
@@ -49,8 +44,31 @@ export function ChatHistoryList({ onOpenSession }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<Record<string, boolean>>({});
   const [refreshing, setRefreshing] = useState(false);
+  const [bulkDeleting, setBulkDeleting] = useState(false);
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [selected, setSelected] = useState<Record<string, boolean>>({});
+  const [renameTarget, setRenameTarget] = useState<ChatSession | null>(null);
+  const [renameValue, setRenameValue] = useState('');
+  const [renameLoading, setRenameLoading] = useState(false);
+  const [renameError, setRenameError] = useState<string | null>(null);
+
+  const sessionKey = (session: ChatSession) => `${session.assistantId || 'unknown'}:${session.id}`;
+
+  const clearSessionArtifacts = (session: ChatSession) => {
+    if (typeof window === 'undefined') return;
+    try { localStorage.removeItem(`hana_messages_${session.id}`); } catch {}
+    try {
+      const raw = localStorage.getItem('hana_current_session');
+      if (raw) {
+        const current = JSON.parse(raw) as { sessionId?: string } | null;
+        if (current?.sessionId === session.id) {
+          localStorage.removeItem('hana_current_session');
+        }
+      }
+    } catch {}
+    try { window.dispatchEvent(new CustomEvent('hana-session-deleted', { detail: { assistantId: session.assistantId, sessionId: session.id } })); } catch {}
+  };
 
   const loadAllSessions = async () => {
     setError(null);
@@ -100,33 +118,168 @@ export function ChatHistoryList({ onOpenSession }: Props) {
     });
   }, [sessions, searchQuery]);
 
+  const selectedSessions = useMemo(() => {
+    return sessions.filter((session) => selected[sessionKey(session)]);
+  }, [sessions, selected]);
+
+  useEffect(() => {
+    // Drop selections for sessions that no longer exist
+    setSelected((prev) => {
+      const next: Record<string, boolean> = {};
+      sessions.forEach((session) => {
+        const key = sessionKey(session);
+        if (prev[key]) next[key] = true;
+      });
+      return next;
+    });
+  }, [sessions]);
+
+  const toggleSelection = (session: ChatSession, value: boolean) => {
+    const key = sessionKey(session);
+    setSelected((prev) => {
+      if (value) return { ...prev, [key]: true };
+      if (!prev[key]) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
+  };
+
+  const toggleSelectVisible = (value: boolean) => {
+    setSelected((prev) => {
+      const next = { ...prev };
+      visible.forEach((session) => {
+        const key = sessionKey(session);
+        if (value) {
+          next[key] = true;
+        } else {
+          delete next[key];
+        }
+      });
+      return next;
+    });
+  };
+
+  const allVisibleSelected = useMemo(() => {
+    if (visible.length === 0) return false;
+    return visible.every((session) => selected[sessionKey(session)]);
+  }, [visible, selected]);
+
   const handleDelete = async (session: ChatSession) => {
     if (!session.assistantId) {
       setError('세션의 어시스턴트 정보가 없어 삭제할 수 없습니다.');
       return;
     }
+    setError(null);
     const ok = window.confirm('이 채팅 기록을 삭제할까요?');
     if (!ok) return;
-    setDeleting(prev => ({ ...prev, [session.id]: true }));
+    const key = sessionKey(session);
+    setDeleting(prev => ({ ...prev, [key]: true }));
     const snapshot = sessions;
     // optimistic remove
     setSessions(prev => prev.filter(s => !(s.id === session.id && s.assistantId === session.assistantId)));
+    setSelected(prev => {
+      const key = sessionKey(session);
+      if (!prev[key]) return prev;
+      const { [key]: _removed, ...rest } = prev;
+      return rest;
+    });
     try {
       await deleteChatSessions(session.assistantId, [session.id]);
       // 서버 상태를 신뢰하여 목록 재조회
       setRefreshing(true);
       await loadAllSessions();
+      clearSessionArtifacts(session);
     } catch (e: any) {
       setError(e?.message || '삭제에 실패했습니다.');
       setSessions(snapshot); // revert
     } finally {
-      setDeleting(prev => { const next = { ...prev }; delete next[session.id]; return next; });
+      setDeleting(prev => { const next = { ...prev }; delete next[key]; return next; });
       setRefreshing(false);
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    setError(null);
+    const previousSelected = selected;
+    const targets = selectedSessions.filter((session) => !!session.assistantId);
+    if (targets.length === 0) {
+      setError('삭제할 채팅을 선택하세요.');
+      return;
+    }
+    const ok = window.confirm(`선택한 채팅 ${targets.length}개를 삭제할까요?`);
+    if (!ok) return;
+    setBulkDeleting(true);
+    const snapshot = sessions;
+    const selectedKeys = new Set(targets.map((session) => sessionKey(session)));
+    setSessions((prev) => prev.filter((session) => !selectedKeys.has(sessionKey(session))));
+    setSelected({});
+    try {
+      const grouped: Record<string, string[]> = {};
+      targets.forEach((session) => {
+        const assistantId = session.assistantId!;
+        if (!grouped[assistantId]) grouped[assistantId] = [];
+        grouped[assistantId].push(session.id);
+      });
+      for (const [assistantId, ids] of Object.entries(grouped)) {
+        await deleteChatSessions(assistantId, ids);
+      }
+      setRefreshing(true);
+      await loadAllSessions();
+      targets.forEach(clearSessionArtifacts);
+    } catch (e: any) {
+      setError(e?.message || '삭제에 실패했습니다.');
+      setSessions(snapshot);
+      setSelected(previousSelected);
+    } finally {
+      setRefreshing(false);
+      setBulkDeleting(false);
     }
   };
 
   const toggleStar = (id: string) => {
     setSessions(prev => prev.map(s => (s.id === id ? { ...s, starred: !s.starred } : s)));
+  };
+
+  const openRenameDialog = (session: ChatSession) => {
+    setRenameTarget(session);
+    setRenameValue(session.title);
+    setRenameError(null);
+  };
+
+  const closeRenameDialog = () => {
+    setRenameTarget(null);
+    setRenameValue('');
+    setRenameError(null);
+  };
+
+  const submitRename = async () => {
+    if (!renameTarget) return;
+    if (!renameValue.trim()) {
+      setRenameError('세션 이름을 입력하세요.');
+      return;
+    }
+    if (!renameTarget.assistantId) {
+      setRenameError('어시스턴트 정보가 없어 이름을 수정할 수 없습니다.');
+      return;
+    }
+    setRenameLoading(true);
+    setRenameError(null);
+    try {
+      await updateChatSession(renameTarget.assistantId, renameTarget.id, { name: renameValue.trim() });
+      setSessions(prev => prev.map(s => {
+        if (s.id === renameTarget.id && s.assistantId === renameTarget.assistantId) {
+          return { ...s, title: renameValue.trim() };
+        }
+        return s;
+      }));
+      const key = sessionKey(renameTarget);
+      setSelected(prev => ({ ...prev, [key]: true }));
+      closeRenameDialog();
+    } catch (err: any) {
+      setRenameError(err?.message || '세션 이름 변경에 실패했습니다.');
+    } finally {
+      setRenameLoading(false);
+    }
   };
 
   return (
@@ -150,12 +303,43 @@ export function ChatHistoryList({ onOpenSession }: Props) {
               className="pl-9"
             />
           </div>
-          <div>
-            <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); loadAllSessions().finally(() => setRefreshing(false)); }} disabled={loading || refreshing}>
+          <div className="flex items-center gap-2">
+            {selectedSessions.length > 0 && (
+              <>
+                <Badge variant="secondary" className="hidden md:inline-flex">
+                  {selectedSessions.length}개 선택됨
+                </Badge>
+                {selectedSessions.length === 1 && selectedSessions[0].assistantId && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => openRenameDialog(selectedSessions[0])}
+                    disabled={bulkDeleting || loading || refreshing}
+                  >
+                    이름 수정
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={bulkDeleting || loading || refreshing}
+                >
+                  {bulkDeleting ? '삭제 중...' : '선택 삭제'}
+                </Button>
+              </>
+            )}
+            <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); loadAllSessions().finally(() => setRefreshing(false)); }} disabled={loading || refreshing || bulkDeleting}>
               {refreshing ? '새로고침 중...' : '새로고침'}
             </Button>
           </div>
         </div>
+
+        {error && (
+          <div className="mb-4 rounded-md border border-destructive/30 bg-destructive/10 px-4 py-2 text-sm text-destructive">
+            {error}
+          </div>
+        )}
 
         {/* List */}
         <Card className="bg-elevated p-0 overflow-hidden">
@@ -167,9 +351,25 @@ export function ChatHistoryList({ onOpenSession }: Props) {
             </div>
           ) : (
             <div className="divide-y">
+              {visible.length > 0 && (
+                <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
+                  <Checkbox
+                    checked={allVisibleSelected}
+                    onCheckedChange={(value) => toggleSelectVisible(Boolean(value))}
+                    aria-label="현재 보기 전체 선택"
+                  />
+                  <span>현재 보기 전체 선택</span>
+                </div>
+              )}
               {visible.map((s) => (
                 <div key={`${s.assistantId || 'unknown'}:${s.id}`} className="group relative">
                   <div className="gap-x-3 py-3 px-4 flex items-center">
+                    <Checkbox
+                      checked={!!selected[sessionKey(s)]}
+                      onCheckedChange={(value) => toggleSelection(s, Boolean(value))}
+                      aria-label="채팅 선택"
+                      disabled={bulkDeleting || !!deleting[sessionKey(s)]}
+                    />
                     <div className="flex grow flex-col min-w-0">
                       <button
                         className="text-left group/title block overflow-x-hidden"
@@ -191,24 +391,29 @@ export function ChatHistoryList({ onOpenSession }: Props) {
                         </div>
                       </button>
                     </div>
-                    <div className="shrink-0">
-                      <DropdownMenu>
-                        <DropdownMenuTrigger asChild>
-                          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 text-muted-foreground">
-                            <MoreHorizontal className="h-4 w-4" />
-                          </Button>
-                        </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => onOpenSession?.(s)}>열기</DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => toggleStar(s.id)}>
-                            {s.starred ? '즐겨찾기 해제' : '즐겨찾기 추가'}
-                          </DropdownMenuItem>
-                          <DropdownMenuSeparator />
-                          <DropdownMenuItem variant="destructive" onClick={() => handleDelete(s)} disabled={!!deleting[s.id]}>
-                            삭제
-                          </DropdownMenuItem>
-                        </DropdownMenuContent>
-                      </DropdownMenu>
+                    <div className="shrink-0 flex items-center gap-2">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-muted-foreground"
+                        onClick={() => toggleStar(s.id)}
+                      >
+                        <Star
+                          className={cn(
+                            'h-4 w-4',
+                            s.starred ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                          )}
+                        />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="text-destructive"
+                        onClick={() => handleDelete(s)}
+                        disabled={bulkDeleting || !!deleting[sessionKey(s)]}
+                      >
+                        삭제
+                      </Button>
                     </div>
                   </div>
                   <div className="px-4 pb-3 -mt-1">
@@ -229,6 +434,25 @@ export function ChatHistoryList({ onOpenSession }: Props) {
           )}
         </Card>
       </div>
+
+      <Dialog open={!!renameTarget} onOpenChange={(open) => { if (!open) closeRenameDialog(); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>세션 제목 수정</DialogTitle>
+            <DialogDescription>선택한 채팅의 제목을 변경합니다.</DialogDescription>
+          </DialogHeader>
+          <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} placeholder="새 제목" />
+          {renameError && (
+            <div className="text-xs text-destructive">{renameError}</div>
+          )}
+          <DialogFooter>
+            <Button variant="outline" onClick={closeRenameDialog}>취소</Button>
+            <Button onClick={submitRename} disabled={renameLoading}>
+              {renameLoading ? '저장 중...' : '저장'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

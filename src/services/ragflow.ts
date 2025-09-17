@@ -332,6 +332,11 @@ export async function createChatSession(chatId: string, body: { name: string; us
   return data;
 }
 
+export async function getChatSession(chatId: string, sessionId: string): Promise<ChatSession> {
+  const data = await ragFetch<ChatSession>(`/api/v1/chats/${chatId}/sessions/${sessionId}`);
+  return data;
+}
+
 function tryParseJSON(text: string): any | null {
   try { return JSON.parse(text); } catch { return null; }
 }

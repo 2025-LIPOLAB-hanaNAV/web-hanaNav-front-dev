@@ -13,6 +13,7 @@ interface AppShellProps {
   onThemeToggle: () => void;
   showRightPanel?: boolean;
   rightPanelContent?: React.ReactNode;
+  notificationCount?: number;
 }
 
 export function AppShell({ 
@@ -22,7 +23,8 @@ export function AppShell({
   isDark, 
   onThemeToggle,
   showRightPanel = false,
-  rightPanelContent 
+  rightPanelContent,
+  notificationCount = 0
 }: AppShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 
@@ -68,12 +70,14 @@ export function AppShell({
         <div className="flex items-center gap-2">
           <Button variant="ghost" size="sm" className="relative">
             <Icon name="info" size={16} />
-            <Badge 
-              variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs"
-            >
-              3
-            </Badge>
+            {notificationCount > 0 && (
+              <Badge 
+                variant="destructive" 
+                className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs"
+              >
+                {notificationCount}
+              </Badge>
+            )}
           </Button>
           <Button
             variant="ghost"

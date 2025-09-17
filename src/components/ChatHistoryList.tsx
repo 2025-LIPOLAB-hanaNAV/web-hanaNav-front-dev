@@ -286,52 +286,66 @@ export function ChatHistoryList({ onOpenSession }: Props) {
     <div className="h-full flex flex-col">
       {/* Header */}
       <div className="p-6 border-b">
-        <div className="flex items-center justify-between mb-4 gap-4">
-          <div className="flex items-center gap-3">
-            <HanaNaviLogo size={40} className="opacity-80" />
-            <div>
-              <h1 className="text-2xl font-medium">라이브러리</h1>
-              <p className="text-muted-foreground mt-1">채팅 기록 {visible.length}개</p>
+        <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4 gap-4">
+          <div className="flex items-center gap-3 min-w-0">
+            <HanaNaviLogo size={40} className="opacity-80 flex-shrink-0" />
+            <div className="min-w-0">
+              <h1 className="text-xl lg:text-2xl font-medium whitespace-nowrap">라이브러리</h1>
+              <p className="text-muted-foreground mt-1 text-sm">채팅 기록 {visible.length}개</p>
             </div>
           </div>
-          <div className="w-full md:w-80 relative">
-            <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="채팅 기록 검색..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9"
-            />
-          </div>
-          <div className="flex items-center gap-2">
-            {selectedSessions.length > 0 && (
-              <>
-                <Badge variant="secondary" className="hidden md:inline-flex">
-                  {selectedSessions.length}개 선택됨
-                </Badge>
-                {selectedSessions.length === 1 && selectedSessions[0].assistantId && (
+
+          <div className="flex flex-col sm:flex-row gap-3 items-stretch sm:items-center">
+            {/* 검색창 */}
+            <div className="relative w-full sm:w-64 lg:w-72">
+              <Icon name="search" size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none" />
+              <Input
+                placeholder="채팅 기록 검색..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10 pr-4"
+              />
+            </div>
+
+            {/* 액션 버튼들 */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              {selectedSessions.length > 0 && (
+                <>
+                  <Badge variant="secondary" className="hidden sm:inline-flex">
+                    {selectedSessions.length}개 선택됨
+                  </Badge>
+                  {selectedSessions.length === 1 && selectedSessions[0].assistantId && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => openRenameDialog(selectedSessions[0])}
+                      disabled={bulkDeleting || loading || refreshing}
+                      className="whitespace-nowrap"
+                    >
+                      이름 수정
+                    </Button>
+                  )}
                   <Button
-                    variant="outline"
+                    variant="destructive"
                     size="sm"
-                    onClick={() => openRenameDialog(selectedSessions[0])}
+                    onClick={handleBulkDelete}
                     disabled={bulkDeleting || loading || refreshing}
+                    className="whitespace-nowrap"
                   >
-                    이름 수정
+                    {bulkDeleting ? '삭제 중...' : '선택 삭제'}
                   </Button>
-                )}
-                <Button
-                  variant="destructive"
-                  size="sm"
-                  onClick={handleBulkDelete}
-                  disabled={bulkDeleting || loading || refreshing}
-                >
-                  {bulkDeleting ? '삭제 중...' : '선택 삭제'}
-                </Button>
-              </>
-            )}
-            <Button variant="outline" size="sm" onClick={() => { setRefreshing(true); loadAllSessions().finally(() => setRefreshing(false)); }} disabled={loading || refreshing || bulkDeleting}>
-              {refreshing ? '새로고침 중...' : '새로고침'}
-            </Button>
+                </>
+              )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setRefreshing(true); loadAllSessions().finally(() => setRefreshing(false)); }}
+                disabled={loading || refreshing || bulkDeleting}
+                className="whitespace-nowrap"
+              >
+                {refreshing ? '새로고침 중...' : '새로고침'}
+              </Button>
+            </div>
           </div>
         </div>
 

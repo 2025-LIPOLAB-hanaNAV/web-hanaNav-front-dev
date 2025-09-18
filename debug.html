@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Debug Test</title>
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        font-weight: 400;
+        margin: 40px;
+        background: #f5f5f5;
+      }
+      h1 { font-weight: 700; }
+      h2 { font-weight: 600; }
+      h3 { font-weight: 500; }
+      p { font-weight: 400; }
+    </style>
+  </head>
+  <body>
+    <h1>Debug Test - Typography Check</h1>
+    <h2>Font Weight Test</h2>
+    <h3>Heading 3 - Medium Weight</h3>
+    <p>This is body text with normal weight (400)</p>
+
+    <h2>Test Results</h2>
+    <p>✅ If you can see this page, the server is working</p>
+    <p>✅ Check browser console for any errors</p>
+    <p>✅ Check Network tab for failed requests</p>
+
+    <script>
+      console.log('Debug page loaded successfully');
+      console.log('Font weights:');
+      console.log('H1:', getComputedStyle(document.querySelector('h1')).fontWeight);
+      console.log('H2:', getComputedStyle(document.querySelector('h2')).fontWeight);
+      console.log('H3:', getComputedStyle(document.querySelector('h3')).fontWeight);
+      console.log('P:', getComputedStyle(document.querySelector('p')).fontWeight);
+    </script>
+  </body>
+</html>

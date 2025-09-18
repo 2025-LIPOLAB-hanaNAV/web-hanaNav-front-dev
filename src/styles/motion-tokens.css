@@ -1,0 +1,90 @@
+/**
+ * Motion Design Tokens
+ * 60fps 보장을 위한 성능 최적화된 애니메이션 시스템
+ */
+
+:root {
+  /* === 기본 타이밍 === */
+  --motion-duration-instant: 0ms;
+  --motion-duration-fast: 150ms;
+  --motion-duration-normal: 220ms;
+  --motion-duration-slow: 300ms;
+  --motion-duration-slower: 500ms;
+  
+  /* === Spring 곡선 (60fps 최적화) === */
+  --motion-ease-spring-snappy: cubic-bezier(0.5, -0.3, 0.1, 1.5);
+  --motion-ease-spring-smooth: cubic-bezier(0.4, 0.0, 0.2, 1.0);
+  --motion-ease-spring-bouncy: cubic-bezier(0.68, -0.55, 0.265, 1.55);
+  --motion-ease-out-quart: cubic-bezier(0.25, 1, 0.5, 1);
+  --motion-ease-in-out-back: cubic-bezier(0.68, -0.6, 0.32, 1.6);
+  
+  /* === 클릭 팝 효과 === */
+  --click-pop-scale-start: 0.95;
+  --click-pop-scale-end: 1.02;
+  --click-pop-scale-rest: 1;
+  --click-pop-blur-active: 0.5px;
+  --click-pop-shadow-active: 0 8px 30px rgba(var(--primary-rgb), 0.3);
+  
+  /* === 검색 마법 효과 === */
+  --search-glow-radius-start: 0px;
+  --search-glow-radius-active: 120px;
+  --search-glow-opacity-start: 0;
+  --search-glow-opacity-active: 0.6;
+  --search-glow-blur: 40px;
+  
+  /* === 파티클 시스템 === */
+  --particle-count: 12;
+  --particle-size-min: 2px;
+  --particle-size-max: 6px;
+  --particle-travel-distance: 80px;
+  --particle-opacity-start: 0;
+  --particle-opacity-peak: 0.8;
+  --particle-opacity-end: 0;
+  
+  /* === 펄스 효과 === */
+  --pulse-scale-start: 1;
+  --pulse-scale-peak: 1.05;
+  --pulse-scale-end: 1;
+  --pulse-glow-start: 0;
+  --pulse-glow-peak: 15px;
+  --pulse-glow-end: 0;
+  
+  /* === 성능 최적화 === */
+  --gpu-acceleration: translate3d(0, 0, 0);
+  --will-change-transform: transform;
+  --will-change-opacity: opacity;
+  --will-change-filter: filter;
+  --will-change-all: transform, opacity, filter;
+}
+
+/* === Reduced Motion 지원 === */
+@media (prefers-reduced-motion: reduce) {
+  :root {
+    --motion-duration-fast: 0ms;
+    --motion-duration-normal: 0ms;
+    --motion-duration-slow: 0ms;
+    --motion-duration-slower: 0ms;
+    
+    --click-pop-scale-start: 1;
+    --click-pop-scale-end: 1;
+    --search-glow-radius-active: 0px;
+    --search-glow-opacity-active: 0;
+    --particle-count: 0;
+    --pulse-scale-peak: 1;
+  }
+}
+
+/* === GPU 가속 기본 클래스 === */
+.motion-optimized {
+  will-change: var(--will-change-transform);
+  transform: var(--gpu-acceleration);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+.motion-optimized-all {
+  will-change: var(--will-change-all);
+  transform: var(--gpu-acceleration);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}

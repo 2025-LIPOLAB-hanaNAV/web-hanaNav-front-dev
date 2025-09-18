@@ -32,7 +32,7 @@ export function FigmaInspiredButton({
     <Button
       onClick={onClick}
       className={cn(
-        'button-primary text-white font-bold border-0 transition-all duration-300 hover:scale-105',
+        'button-primary text-white font-medium border-0 transition-all duration-300 hover:scale-105',
         sizeClasses[size],
         variant === 'secondary' && 'bg-white text-primary hover:bg-gray-50',
         className

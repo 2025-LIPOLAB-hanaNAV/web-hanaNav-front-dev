@@ -66,14 +66,8 @@ export function AppShell({
         </div>
         
         <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" className="relative">
+          <Button variant="ghost" size="sm">
             <Icon name="info" size={16} />
-            <Badge 
-              variant="destructive" 
-              className="absolute -top-1 -right-1 h-5 w-5 p-0 text-xs"
-            >
-              3
-            </Badge>
           </Button>
           <Button
             variant="ghost"

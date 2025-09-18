@@ -29,8 +29,8 @@ export function KnowledgeBase() {
   const [docsLoading, setDocsLoading] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [lastUploaded, setLastUploaded] = useState<string[]>([]);
   const [selectedDocId, setSelectedDocId] = useState<string>('');
+  const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
   // Chunks state
   const [chunks, setChunks] = useState<ChunkItem[]>([]);
   const [chunksLoading, setChunksLoading] = useState(false);
@@ -40,9 +40,16 @@ export function KnowledgeBase() {
   const [isAddChunkOpen, setIsAddChunkOpen] = useState(false);
   const [newChunkContent, setNewChunkContent] = useState('');
   const [newChunkKeywords, setNewChunkKeywords] = useState('');
+  const [isEditChunkOpen, setIsEditChunkOpen] = useState(false);
+  const [editingChunk, setEditingChunk] = useState<ChunkItem | null>(null);
+  const [editChunkContent, setEditChunkContent] = useState('');
+  const [editChunkKeywords, setEditChunkKeywords] = useState('');
   const [retrieveQ, setRetrieveQ] = useState('');
   const [retrieveLoading, setRetrieveLoading] = useState(false);
   const [retrieveCount, setRetrieveCount] = useState<number | null>(null);
+  const [retrieveResults, setRetrieveResults] = useState<any[]>([]);
+  const [retrievePageSize, setRetrievePageSize] = useState(10);
+  const [highlightSearch, setHighlightSearch] = useState(true);
 
   const loadDatasets = async () => {
     setDsLoading(true);
@@ -117,9 +124,7 @@ export function KnowledgeBase() {
     setBusy(true);
     setDocsError(null);
     try {
-      const uploaded = await uploadDocuments(selectedDatasetId, files);
-      const ids = uploaded.map(u => u.id);
-      setLastUploaded(ids);
+      await uploadDocuments(selectedDatasetId, files);
       await loadDocuments(selectedDatasetId);
     } catch (err: any) {
       setDocsError(err?.message || '업로드 실패');
@@ -129,25 +134,27 @@ export function KnowledgeBase() {
     }
   };
 
-  const startParsing = async () => {
-    if (!selectedDatasetId || lastUploaded.length === 0) return;
+  const startParsingSelected = async () => {
+    if (!selectedDatasetId || selectedDocIds.length === 0) return;
     setBusy(true);
     try {
-      await parseDocuments(selectedDatasetId, lastUploaded);
+      await parseDocuments(selectedDatasetId, selectedDocIds);
+      setDocsError(null);
     } catch (err) {
-      setDocsError('파싱 시작 실패');
+      setDocsError('선택된 문서 파싱 시작 실패');
     } finally {
       setBusy(false);
     }
   };
 
-  const stopParsingAll = async () => {
-    if (!selectedDatasetId || lastUploaded.length === 0) return;
+  const stopParsingSelected = async () => {
+    if (!selectedDatasetId || selectedDocIds.length === 0) return;
     setBusy(true);
     try {
-      await stopParsing(selectedDatasetId, lastUploaded);
+      await stopParsing(selectedDatasetId, selectedDocIds);
+      setDocsError(null);
     } catch (err) {
-      setDocsError('파싱 중지 실패');
+      setDocsError('선택된 문서 파싱 중지 실패');
     } finally {
       setBusy(false);
     }
@@ -200,14 +207,53 @@ export function KnowledgeBase() {
     }
   };
 
+  const handleEditChunk = (chunk: ChunkItem) => {
+    setEditingChunk(chunk);
+    setEditChunkContent(chunk.content);
+    setEditChunkKeywords(chunk.important_keywords?.join(', ') || '');
+    setIsEditChunkOpen(true);
+  };
+
+  const handleUpdateChunk = async () => {
+    if (!selectedDatasetId || !selectedDocId || !editingChunk) return;
+    const content = editChunkContent.trim();
+    if (!content) return;
+    setBusy(true);
+    try {
+      const keywords = editChunkKeywords.split(',').map(s => s.trim()).filter(Boolean);
+      await updateChunk(selectedDatasetId, selectedDocId, editingChunk.id, {
+        content,
+        important_keywords: keywords.length ? keywords : undefined
+      });
+      setEditChunkContent('');
+      setEditChunkKeywords('');
+      setEditingChunk(null);
+      setIsEditChunkOpen(false);
+      await loadChunks();
+    } catch (err) {
+      setChunksError('청크 수정 실패');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const handleRetrieve = async () => {
     const q = retrieveQ.trim();
     if (!q || !selectedDatasetId) return;
     setRetrieveLoading(true);
     setRetrieveCount(null);
+    setRetrieveResults([]);
     try {
-      const res = await retrieveChunks({ question: q, dataset_ids: [selectedDatasetId], document_ids: selectedDocId ? [selectedDocId] : undefined, page: 1, page_size: 10, highlight: true });
+      const res = await retrieveChunks({
+        question: q,
+        dataset_ids: [selectedDatasetId],
+        document_ids: selectedDocId ? [selectedDocId] : undefined,
+        page: 1,
+        page_size: retrievePageSize,
+        highlight: highlightSearch
+      });
       setRetrieveCount(res.total);
+      setRetrieveResults(res.chunks || []);
     } catch (err) {
       setChunksError('청크 검색 실패');
     } finally {
@@ -260,11 +306,11 @@ export function KnowledgeBase() {
                 <Button variant="outline" size="sm" onClick={onChooseFiles} disabled={!selectedDatasetId || busy}>
                   <Icon name="upload" size={16} /> 문서 업로드
                 </Button>
-                <Button variant="outline" size="sm" onClick={startParsing} disabled={lastUploaded.length === 0 || busy}>
-                  <Icon name="arrow-right" size={16} /> 파싱 시작
+                <Button variant="default" size="sm" onClick={startParsingSelected} disabled={selectedDocIds.length === 0 || busy}>
+                  <Icon name="play" size={16} /> 선택 파싱
                 </Button>
-                <Button variant="outline" size="sm" onClick={stopParsingAll} disabled={lastUploaded.length === 0 || busy}>
-                  <Icon name="alert-triangle" size={16} /> 파싱 중지
+                <Button variant="destructive" size="sm" onClick={stopParsingSelected} disabled={selectedDocIds.length === 0 || busy}>
+                  <Icon name="square" size={16} /> 선택 중지
                 </Button>
                 <Button variant="outline" size="sm" onClick={() => loadDocuments(selectedDatasetId)} disabled={!selectedDatasetId || docsLoading}>
                   새로고침
@@ -279,6 +325,18 @@ export function KnowledgeBase() {
                 <Table>
                   <TableHeader>
                     <TableRow>
+                      <TableHead className="w-10">
+                        <Checkbox
+                          checked={docs.length > 0 && selectedDocIds.length === docs.length}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedDocIds(docs.map(d => d.id));
+                            } else {
+                              setSelectedDocIds([]);
+                            }
+                          }}
+                        />
+                      </TableHead>
                       <TableHead>이름</TableHead>
                       <TableHead>상태</TableHead>
                       <TableHead>크기</TableHead>
@@ -287,20 +345,33 @@ export function KnowledgeBase() {
                   </TableHeader>
                   <TableBody>
                     {docsLoading ? (
-                      <TableRow><TableCell colSpan={4} className="text-muted-foreground">불러오는 중...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-muted-foreground">불러오는 중...</TableCell></TableRow>
                     ) : docs.length === 0 ? (
-                      <TableRow><TableCell colSpan={4} className="text-muted-foreground">문서가 없습니다.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={5} className="text-muted-foreground">문서가 없습니다.</TableCell></TableRow>
                     ) : (
-                      docs.map(d => (
-                        <TableRow key={d.id}>
-                          <TableCell className="max-w-[360px] truncate">{d.name}</TableCell>
-                          <TableCell className="text-sm text-muted-foreground">
-                            {String(d.run ?? d.status ?? '')}{d.progress != null ? ` • ${Math.round((d.progress as number) * 100) / 100}%` : ''}
-                          </TableCell>
-                          <TableCell className="text-sm text-muted-foreground">{d.size ? `${d.size}B` : '-'}</TableCell>
-                          <TableCell className="text-right text-xs text-muted-foreground">{d.update_time ? new Date(d.update_time).toLocaleString() : ''}</TableCell>
-                        </TableRow>
-                      ))
+                      docs.map(d => {
+                        const checked = selectedDocIds.includes(d.id);
+                        return (
+                          <TableRow key={d.id}>
+                            <TableCell className="align-top">
+                              <Checkbox
+                                checked={checked}
+                                onCheckedChange={() => {
+                                  setSelectedDocIds(prev =>
+                                    checked ? prev.filter(id => id !== d.id) : [...prev, d.id]
+                                  );
+                                }}
+                              />
+                            </TableCell>
+                            <TableCell className="max-w-[360px] truncate">{d.name}</TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {String(d.run ?? d.status ?? '')}{d.progress != null ? ` • ${Math.round((d.progress as number) * 100) / 100}%` : ''}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{d.size ? `${d.size}B` : '-'}</TableCell>
+                            <TableCell className="text-right text-xs text-muted-foreground">{d.update_time ? new Date(d.update_time).toLocaleString() : ''}</TableCell>
+                          </TableRow>
+                        );
+                      })
                     )}
                   </TableBody>
                 </Table>
@@ -361,6 +432,31 @@ export function KnowledgeBase() {
                   </DialogContent>
                 </Dialog>
 
+                <Dialog open={isEditChunkOpen} onOpenChange={setIsEditChunkOpen}>
+                  <DialogContent className="max-w-xl">
+                    <DialogHeader>
+                      <DialogTitle>청크 수정</DialogTitle>
+                    </DialogHeader>
+                    <div className="space-y-3">
+                      <Textarea
+                        rows={6}
+                        placeholder="청크 내용"
+                        value={editChunkContent}
+                        onChange={(e) => setEditChunkContent(e.target.value)}
+                      />
+                      <Input
+                        placeholder="키워드(쉼표로 구분)"
+                        value={editChunkKeywords}
+                        onChange={(e) => setEditChunkKeywords(e.target.value)}
+                      />
+                      <div className="flex justify-end gap-2">
+                        <Button variant="outline" onClick={() => setIsEditChunkOpen(false)}>취소</Button>
+                        <Button onClick={handleUpdateChunk} disabled={!editChunkContent.trim() || busy}>수정</Button>
+                      </div>
+                    </div>
+                  </DialogContent>
+                </Dialog>
+
                 <Button variant="destructive" size="sm" onClick={handleDeleteChunks} disabled={selectedChunkIds.length === 0 || busy}>선택 삭제</Button>
               </div>
 
@@ -373,13 +469,14 @@ export function KnowledgeBase() {
                       <TableHead className="w-10"></TableHead>
                       <TableHead>내용</TableHead>
                       <TableHead className="w-48">청크 ID</TableHead>
+                      <TableHead className="w-20">작업</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
                     {chunksLoading ? (
-                      <TableRow><TableCell colSpan={3} className="text-muted-foreground">불러오는 중...</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={4} className="text-muted-foreground">불러오는 중...</TableCell></TableRow>
                     ) : chunks.length === 0 ? (
-                      <TableRow><TableCell colSpan={3} className="text-muted-foreground">청크가 없습니다.</TableCell></TableRow>
+                      <TableRow><TableCell colSpan={4} className="text-muted-foreground">청크가 없습니다.</TableCell></TableRow>
                     ) : (
                       chunks.map(ch => {
                         const checked = selectedChunkIds.includes(ch.id);
@@ -390,6 +487,16 @@ export function KnowledgeBase() {
                             </TableCell>
                             <TableCell className="max-w-[520px] whitespace-pre-wrap break-words">{ch.content}</TableCell>
                             <TableCell className="text-xs text-muted-foreground align-top">{ch.id}</TableCell>
+                            <TableCell className="align-top">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => handleEditChunk(ch)}
+                                disabled={busy}
+                              >
+                                <Icon name="edit" size={14} />
+                              </Button>
+                            </TableCell>
                           </TableRow>
                         );
                       })
@@ -399,15 +506,70 @@ export function KnowledgeBase() {
               </div>
 
               <Card className="p-4">
-                <div className="flex items-center gap-2 mb-2">
+                <div className="flex items-center gap-2 mb-3">
                   <Icon name="search" size={16} />
-                  <span className="font-medium">Retrieve 테스트</span>
+                  <span className="font-medium">벡터DB 검색</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <Input className="flex-1" placeholder="질문을 입력하세요" value={retrieveQ} onChange={(e) => setRetrieveQ(e.target.value)} />
-                  <Button variant="outline" size="sm" onClick={handleRetrieve} disabled={retrieveLoading || !retrieveQ.trim()}>검색</Button>
-                  {retrieveCount != null && (
-                    <Badge variant="secondary">총 {retrieveCount}건</Badge>
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      className="flex-1"
+                      placeholder="질문을 입력하세요"
+                      value={retrieveQ}
+                      onChange={(e) => setRetrieveQ(e.target.value)}
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleRetrieve}
+                      disabled={retrieveLoading || !retrieveQ.trim()}
+                    >
+                      {retrieveLoading ? '검색 중...' : '검색'}
+                    </Button>
+                  </div>
+                  <div className="flex items-center gap-4">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm text-muted-foreground">결과 수:</span>
+                      <Select value={retrievePageSize.toString()} onValueChange={(v) => setRetrievePageSize(parseInt(v))}>
+                        <SelectTrigger className="w-20">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="5">5</SelectItem>
+                          <SelectItem value="10">10</SelectItem>
+                          <SelectItem value="20">20</SelectItem>
+                          <SelectItem value="50">50</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Checkbox
+                        checked={highlightSearch}
+                        onCheckedChange={(checked) => setHighlightSearch(Boolean(checked))}
+                      />
+                      <span className="text-sm text-muted-foreground">하이라이트</span>
+                    </div>
+                    {retrieveCount != null && (
+                      <Badge variant="secondary">총 {retrieveCount}건</Badge>
+                    )}
+                  </div>
+                  {retrieveResults.length > 0 && (
+                    <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
+                      <div className="text-sm font-medium mb-2">검색 결과:</div>
+                      {retrieveResults.map((result, index) => (
+                        <div key={index} className="p-3 border rounded-md bg-muted/30">
+                          <div className="text-xs text-muted-foreground mb-1">
+                            Score: {result.similarity_score?.toFixed(4) || 'N/A'}
+                          </div>
+                          <div className="text-sm whitespace-pre-wrap break-words">
+                            {highlightSearch && result.content_with_weight
+                              ? result.content_with_weight
+                              : result.content
+                            }
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                   )}
                 </div>
               </Card>

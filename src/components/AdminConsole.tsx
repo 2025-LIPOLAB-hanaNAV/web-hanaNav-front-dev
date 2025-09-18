@@ -365,7 +365,7 @@ export function AdminConsole() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col font-sans">
       {/* Header */}
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">

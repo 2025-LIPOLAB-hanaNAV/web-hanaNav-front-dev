@@ -262,7 +262,7 @@ export function KnowledgeBase() {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col font-sans">
       <div className="p-6 border-b">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">

@@ -283,7 +283,7 @@ export function ChatHistoryList({ onOpenSession }: Props) {
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div className="h-full flex flex-col font-sans">
       {/* Header */}
       <div className="p-6 border-b">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4 gap-4">

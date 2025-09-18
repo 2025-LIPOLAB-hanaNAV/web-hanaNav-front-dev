@@ -50,8 +50,8 @@ export function ChatBubble({
     let text = escapeHtml(md);
     // headings: ###, ##, # (map to h4/h3/h2 for compactness)
     text = text.replace(/^###\s+(.+)$/gm, '<h4 class="font-medium text-sm mt-2 mb-1">$1</h4>');
-    text = text.replace(/^##\s+(.+)$/gm, '<h3 class="font-semibold text-base mt-2 mb-1">$1</h3>');
-    text = text.replace(/^#\s+(.+)$/gm, '<h2 class="font-semibold text-lg mt-2 mb-1">$1</h2>');
+    text = text.replace(/^##\s+(.+)$/gm, '<h3 class="font-medium text-base mt-2 mb-1">$1</h3>');
+    text = text.replace(/^#\s+(.+)$/gm, '<h2 class="font-medium text-lg mt-2 mb-1">$1</h2>');
     // bold **text**
     text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
     // italic *text*

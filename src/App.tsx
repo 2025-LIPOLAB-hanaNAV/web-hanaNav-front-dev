@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { ChatPage } from './components/ChatPage';
+import { HomePage } from './components/HomePage';
 // import { SavedDestinations } from './components/SavedDestinations';
 import { ChatHistoryList } from './components/ChatHistoryList';
 import { AdminConsole } from './components/AdminConsole';
@@ -18,8 +19,8 @@ interface EvidenceItem {
 }
 
 export default function App() {
-  // 초기 진입을 채팅 화면으로 설정
-  const [currentView, setCurrentView] = useState('chat');
+  // 초기 진입을 홈 화면으로 설정
+  const [currentView, setCurrentView] = useState('home');
   const [isDarkMode, setIsDarkMode] = useState(false);
   const [selectedEvidence, setSelectedEvidence] = useState<EvidenceItem | null>(null);
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
@@ -61,6 +62,14 @@ export default function App() {
 
   const renderCurrentView = () => {
     switch (currentView) {
+      case 'home':
+        return (
+          <HomePage
+            onSearch={handleSearch}
+            onQuestionClick={handleQuestionClick}
+            onPresetClick={handlePresetClick}
+          />
+        );
       case 'chat':
         return (
           <ChatPage
@@ -93,9 +102,13 @@ export default function App() {
           <AdminConsole />
         );
       default:
-        // 호환성을 위해 남겨둔 홈(랜딩) 화면
-        // 필요 시 'home' 케이스에서 기존 HomePage를 렌더링할 수 있습니다.
-        return null;
+        return (
+          <HomePage
+            onSearch={handleSearch}
+            onQuestionClick={handleQuestionClick}
+            onPresetClick={handlePresetClick}
+          />
+        );
     }
   };
 

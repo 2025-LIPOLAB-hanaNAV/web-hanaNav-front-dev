@@ -175,7 +175,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
             size="sm"
             className="flex items-center gap-2"
           >
-            <ExternalLink className="h-4 w-4" />
+            <Icon name="external-link" size={16} />
             원문 보기
           </Button>
           
@@ -186,7 +186,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
               onClick={() => handleCopyText(selectedText)}
               className="flex items-center gap-2"
             >
-              <Copy className="h-4 w-4" />
+              <Icon name="copy" size={16} />
               복사
             </Button>
           )}
@@ -201,7 +201,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
             <Card className="p-4 bg-accent/20 border-accent/30">
               <div className="flex items-start gap-3">
                 <div className="w-8 h-8 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <Eye className="h-4 w-4 text-primary" />
+                  <Icon name="eye" size={16} className="text-primary" />
                 </div>
                 <div className="flex-1">
                   <h3 className="font-medium mb-2">핵심 내용</h3>
@@ -220,7 +220,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
             {/* Document Content */}
             <div className="space-y-4">
               <h3 className="font-medium flex items-center gap-2">
-                <FileText className="h-4 w-4" />
+                <Icon name="file-text" size={16} />
                 문서 내용
               </h3>
               
@@ -269,7 +269,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
             {/* Related Links */}
             <div className="space-y-4">
               <h3 className="font-medium flex items-center gap-2">
-                <ArrowRight className="h-4 w-4" />
+                <Icon name="arrow-right" size={16} />
                 관련 문서
               </h3>
               
@@ -285,10 +285,10 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
                   >
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-3">
-                        <FileText className="h-4 w-4 text-muted-foreground" />
+                        <Icon name="file-text" size={16} className="text-muted-foreground" />
                         <span className="text-sm font-medium">{item.title}</span>
                       </div>
-                      <ExternalLink className="h-4 w-4 text-muted-foreground" />
+                      <Icon name="external-link" size={16} className="text-muted-foreground" />
                     </div>
                   </Card>
                 ))}
@@ -329,7 +329,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
                 onClick={() => handleCopyText(selectedText)}
                 className="flex items-center gap-1"
               >
-                <Copy className="h-3 w-3" />
+                <Icon name="copy" size={12} />
                 복사
               </Button>
               <Button
@@ -337,7 +337,7 @@ export function EvidencePanel({ evidence, onClose }: EvidencePanelProps) {
                 size="sm"
                 onClick={() => setSelectedText('')}
               >
-                <X className="h-3 w-3" />
+                <Icon name="x" size={12} />
               </Button>
             </div>
           </div>

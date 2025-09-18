@@ -5,7 +5,7 @@ import { HomePage } from './components/HomePage';
 // import { SavedDestinations } from './components/SavedDestinations';
 import { ChatHistoryList } from './components/ChatHistoryList';
 import { AdminConsole } from './components/AdminConsole';
-import { KnowledgeBase } from './components/KnowledgeBase';
+import KnowledgeBase from './components/KnowledgeBase';
 import { EvidencePanel } from './components/EvidencePanel';
 
 interface EvidenceItem {
@@ -18,6 +18,16 @@ interface EvidenceItem {
   preview: string;
 }
 
+interface SourceReference {
+  id: string;
+  title: string;
+  content: string;
+  datasetId: string;
+  datasetName: string;
+  chunkId?: string;
+  similarity?: number;
+}
+
 export default function App() {
   // 초기 진입을 홈 화면으로 설정
   const [currentView, setCurrentView] = useState('home');
@@ -27,6 +37,12 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchFiles, setSearchFiles] = useState<File[]>([]);
   const [initialSession, setInitialSession] = useState<{ assistantId: string; sessionId: string } | undefined>(undefined);
+  const [knowledgeBaseProps, setKnowledgeBaseProps] = useState<{
+    initialDatasetId?: string;
+    initialDocId?: string;
+    initialChunkId?: string;
+    initialHighlight?: string;
+  }>({});
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -60,6 +76,17 @@ export default function App() {
     console.log('Evidence clicked:', evidence);
   };
 
+  const handleSourceClick = (source: SourceReference) => {
+    console.log('Source clicked:', source);
+    // Navigate to knowledge base with source highlighting
+    setKnowledgeBaseProps({
+      initialDatasetId: source.datasetId,
+      initialChunkId: source.chunkId,
+      initialHighlight: source.content.slice(0, 50) // Use first 50 chars as search term
+    });
+    setCurrentView('documents');
+  };
+
   const renderCurrentView = () => {
     switch (currentView) {
       case 'home':
@@ -74,6 +101,7 @@ export default function App() {
         return (
           <ChatPage
             onEvidenceClick={handleEvidenceClick}
+            onSourceClick={handleSourceClick}
             initialQuery={searchQuery}
             initialFiles={searchFiles}
             initialSession={initialSession}
@@ -96,7 +124,8 @@ export default function App() {
           />
         );
       case 'documents':
-        return <KnowledgeBase />;
+        return <KnowledgeBase {...knowledgeBaseProps} />;
+
       case 'laaj':
         return (
           <AdminConsole />

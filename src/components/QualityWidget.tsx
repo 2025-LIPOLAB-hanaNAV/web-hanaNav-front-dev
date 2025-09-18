@@ -177,7 +177,7 @@ export function QualityWidget({
             />
           ) : (
             <Icon 
-              name="shield-alert" 
+              name="alert-triangle" 
               size={variant === 'compact' ? 12 : 16} 
               className="text-warning" 
               strokeWidth={1.5} 

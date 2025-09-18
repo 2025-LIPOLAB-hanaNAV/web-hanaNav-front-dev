@@ -9,6 +9,16 @@ import { Icon } from './ui/Icon';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { cn } from './ui/utils';
 
+interface SourceReference {
+  id: string;
+  title: string;
+  content: string;
+  datasetId: string;
+  datasetName: string;
+  chunkId?: string;
+  similarity?: number;
+}
+
 interface ChatBubbleProps {
   type: 'user' | 'assistant' | 'system';
   content: string;
@@ -20,19 +30,23 @@ interface ChatBubbleProps {
   responseTime?: number;
   hasPII?: boolean;
   isEvidenceLow?: boolean;
+  sources?: SourceReference[];
+  onSourceClick?: (source: SourceReference) => void;
 }
 
-export function ChatBubble({ 
-  type, 
-  content, 
-  state = 'success', 
+export function ChatBubble({
+  type,
+  content,
+  state = 'success',
   timestamp,
   className,
   onRetry,
   evidenceCount = 0,
   responseTime,
   hasPII = false,
-  isEvidenceLow = false
+  isEvidenceLow = false,
+  sources,
+  onSourceClick
 }: ChatBubbleProps) {
   const isUser = type === 'user';
   const isSystem = type === 'system';
@@ -178,14 +192,14 @@ export function ChatBubble({
                     {responseTime.toFixed(1)}초
                   </div>
                 )}
-                
+
                 {evidenceCount > 0 && (
                   <Badge variant="outline" className="text-xs">
                     근거 {evidenceCount}개
                   </Badge>
                 )}
               </div>
-              
+
               <div className="flex items-center gap-1">
                 {state === 'warning' && onRetry && (
                   <Button
@@ -200,6 +214,44 @@ export function ChatBubble({
               </div>
             </div>
           )}
+
+          {/* Sources/Citations */}
+          {!isUser && sources && sources.length > 0 && (
+            <div className="mt-3 pt-3 border-t border-border/20">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 font-medium">
+                <Icon name="map-pin" size={12} className="text-primary" />
+                <span>답변 경로</span>
+              </div>
+              <div className="space-y-1">
+                {sources.map((source, index) => (
+                  <button
+                    key={source.id}
+                    onClick={() => onSourceClick?.(source)}
+                    className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors group"
+                  >
+                    <div className="flex items-start gap-2">
+                      <div className="text-xs font-mono text-muted-foreground mt-0.5 flex-shrink-0">
+                        [{index + 1}]
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-foreground truncate group-hover:text-primary">
+                          {source.title}
+                        </div>
+                        <div className="text-xs text-muted-foreground truncate">
+                          {source.datasetName}
+                          {source.similarity && ` • 유사도 ${(source.similarity * 100).toFixed(0)}%`}
+                        </div>
+                        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {source.content.slice(0, 100)}...
+                        </div>
+                      </div>
+                      <Icon name="external-link" size={12} className="text-muted-foreground group-hover:text-primary flex-shrink-0 mt-0.5" />
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </Card>
         
         {timestamp && (
@@ -211,8 +263,6 @@ export function ChatBubble({
           </div>
         )}
       </div>
-      
-
     </div>
   );
 }

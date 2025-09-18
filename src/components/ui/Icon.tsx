@@ -5,7 +5,9 @@ import {
   Shield, AlertTriangle, CheckCircle, HelpCircle, Info, Star,
   Bookmark, Pin, Calendar, Share2, Link2, Upload, Download, Copy,
   Filter, Settings, Home, ShieldCheck, PiggyBank, CreditCard, Coins,
-  Route, Users, Navigation
+  Route, Users, Navigation, Trash2, Play, Square, Edit, Hash,
+  MapPin, BookmarkCheck, MoreHorizontal, ExternalLink, Eye, X,
+  Clock, RefreshCw
 } from "lucide-react";
 
 const ICONS = {
@@ -40,6 +42,19 @@ const ICONS = {
   "route": Route,
   "users": Users,
   "navigation": Navigation,
+  "trash-2": Trash2,
+  "play": Play,
+  "square": Square,
+  "edit": Edit,
+  "hash": Hash,
+  "map-pin": MapPin,
+  "bookmark-check": BookmarkCheck,
+  "more-horizontal": MoreHorizontal,
+  "external-link": ExternalLink,
+  "eye": Eye,
+  "x": X,
+  "clock": Clock,
+  "refresh-cw": RefreshCw,
 } as const;
 
 export type IconName = keyof typeof ICONS;

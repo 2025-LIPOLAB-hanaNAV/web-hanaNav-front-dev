@@ -24,6 +24,17 @@ interface ChatMessage {
   responseTime?: number;
   hasPII?: boolean;
   isEvidenceLow?: boolean;
+  sources?: SourceReference[];
+}
+
+interface SourceReference {
+  id: string;
+  title: string;
+  content: string;
+  datasetId: string;
+  datasetName: string;
+  chunkId?: string;
+  similarity?: number;
 }
 
 interface EvidenceItem {
@@ -47,6 +58,7 @@ type KnowledgeBase = { id: string; name: string };
 
 interface ChatPageProps {
   onEvidenceClick?: (evidence: EvidenceItem) => void;
+  onSourceClick?: (source: SourceReference) => void;
   initialQuery?: string;
   initialFiles?: File[];
   onQueryProcessed?: () => void;
@@ -57,7 +69,7 @@ interface ChatPagePropsExtended extends ChatPageProps {
   initialSession?: InitialSession;
 }
 
-export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
+export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentMode, setCurrentMode] = useState('quick');
@@ -84,7 +96,7 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasExternalSession = useRef(false);
 
-  // Initialize session from props
+  // Initialize session from props and load previous messages
   useEffect(() => {
     if (initialSession?.assistantId) {
       hasExternalSession.current = true;
@@ -95,9 +107,40 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
         hasExternalSession.current = true;
         setMessages([]);
         setSessionId(initialSession.sessionId);
+        // 기존 세션 대화 내용 로드
+        loadSessionMessages(initialSession.assistantId!, initialSession.sessionId);
       }
     }
   }, [initialSession?.assistantId, initialSession?.sessionId, sessionId]);
+
+  // 세션 대화 내용 로드 함수
+  const loadSessionMessages = async (assistantId: string, sessionId: string) => {
+    try {
+      // 먼저 로컬 스토리지에서 메시지 복원 시도
+      const savedMessages = localStorage.getItem(`hana_messages_${sessionId}`);
+      if (savedMessages) {
+        const parsedMessages = JSON.parse(savedMessages);
+        setMessages(parsedMessages);
+        return;
+      }
+
+      // 로컬에 없으면 서버에서 세션 정보 가져오기
+      const session = await getChatSession(assistantId, sessionId);
+      if (session.messages && session.messages.length > 0) {
+        const convertedMessages = session.messages.map((msg, index) => ({
+          id: `msg_${index}`,
+          type: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date().toISOString(),
+          state: 'success' as const
+        }));
+        setMessages(convertedMessages);
+      }
+    } catch (error) {
+      // Silently ignore session loading errors for now
+      // console.warn('Failed to load session messages:', error);
+    }
+  };
 
   // Restore persisted session when no explicit target was provided
   useEffect(() => {
@@ -178,7 +221,8 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
           setMessages(mapped);
         }
       } catch (e) {
-        console.warn('[Chat] getChatSession failed:', (e as any)?.message || e);
+        // Silently ignore getChatSession errors for now
+        // console.warn('[Chat] getChatSession failed:', (e as any)?.message || e);
       }
     })();
     return () => { active = false; };
@@ -210,6 +254,14 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
           name,
           dataset_ids: selectedKBs.length > 0 ? [dsId!, ...selectedKBs] : [dsId!],
           llm: activeModel ? { model_name: activeModel } : undefined,
+          prompt: {
+            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
+            quote: true,
+            keyword: false,
+            parameters: [
+              { key: "knowledge", optional: false, type: "string" }
+            ]
+          },
         });
         eaId = created.id;
         setEphemeralAssistantId(eaId);
@@ -378,9 +430,43 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
     try {
       if (isEphemeral) {
         const ids = ephemeralDatasetId ? [ephemeralDatasetId, ...selectedKBs] : [...selectedKBs];
-        await updateChat(activeAssistantId, { dataset_ids: ids });
+        // 지식베이스와 함께 프롬프트도 자동 업데이트
+        await updateChat(activeAssistantId, {
+          dataset_ids: ids,
+          prompt: ids.length > 0 ? {
+            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
+            quote: true,
+            keyword: false,
+            parameters: [
+              { key: "knowledge", optional: false, type: "string" }
+            ]
+          } : {
+            system: "You are a helpful AI assistant. Please provide accurate and helpful responses.",
+            quote: false,
+            keyword: false,
+            parameters: []
+          }
+        });
+      } else {
+        // 일반 어시스턴트도 프롬프트 자동 업데이트
+        await updateChat(activeAssistantId, {
+          dataset_ids: selectedKBs,
+          prompt: selectedKBs.length > 0 ? {
+            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
+            quote: true,
+            keyword: false,
+            parameters: [
+              { key: "knowledge", optional: false, type: "string" }
+            ]
+          } : {
+            system: "You are a helpful AI assistant. Please provide accurate and helpful responses.",
+            quote: false,
+            keyword: false,
+            parameters: []
+          }
+        });
       }
-      setKbToast(selectedKBs.length === 0 ? '연결된 지식베이스를 초기화했습니다.' : `${selectedKBs.length}개 지식베이스를 적용했습니다.`);
+      setKbToast(selectedKBs.length === 0 ? '지식베이스 연결이 해제되었습니다.' : `${selectedKBs.length}개 지식베이스가 연결되어 자동으로 설정되었습니다.`);
       setKbToastType('success');
     } catch (err: any) {
       setKbToast(err?.message || '지식베이스 적용에 실패했습니다.');
@@ -435,16 +521,50 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
         try { await updateChatSession(activeAssistantId, result.session_id, { name }); } catch {}
       }
       const evidenceCount = result.reference?.chunks?.length || result.reference?.total || 0;
+      const sources: SourceReference[] = result.reference?.chunks?.map((chunk: any, index: number) => ({
+        id: `source_${index}`,
+        title: chunk.document_name || chunk.doc_name || `문서 ${index + 1}`,
+        content: chunk.content_with_weight || chunk.content || '',
+        datasetId: chunk.dataset_id || '',
+        datasetName: chunk.dataset_name || '알 수 없음',
+        chunkId: chunk.chunk_id || chunk.id,
+        similarity: chunk.similarity || chunk.score
+      })) || [];
+
+      console.log('RAG Response Debug:', {
+        reference: result.reference,
+        chunks: result.reference?.chunks,
+        sources: sources
+      });
+
+      // Remove ID references and convert 0-based indices in answer text to 1-based
+      const cleanResponseText = (text: string): string => {
+        // Remove [ID:0], [ID:1] etc.
+        let cleaned = text.replace(/\[ID:\d+\]/g, '');
+
+        // Convert [0], [1], [2] to [1], [2], [3]
+        cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
+          const index = parseInt(num);
+          return `[${index + 1}]`;
+        });
+
+        // Clean up extra whitespace and line breaks
+        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+
+        return cleaned;
+      };
+
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
         type: 'assistant',
-        content: result.answer || '응답이 비어 있습니다.',
+        content: cleanResponseText(result.answer || '응답이 비어 있습니다.'),
         timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
         state: 'success',
         evidenceCount: Number(evidenceCount) || undefined,
         responseTime: dt,
         hasPII: false,
-        isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0)
+        isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0),
+        sources: sources.length > 0 ? sources : undefined
       };
       setMessages(prev => prev.slice(0, -1).concat(assistantMessage));
     } catch (err: any) {
@@ -780,50 +900,10 @@ export function ChatPage({ onEvidenceClick, initialQuery, initialFiles, onQueryP
                   responseTime={message.responseTime}
                   hasPII={message.hasPII}
                   isEvidenceLow={message.isEvidenceLow}
+                  sources={message.sources}
+                  onSourceClick={onSourceClick}
                 />
                 
-                {/* Answer Card for assistant messages with evidence */}
-                {message.type === 'assistant' && 
-                 message.state === 'success' && 
-                 message.evidenceCount && 
-                 message.evidenceCount > 0 && (
-                  <div className="ml-11">
-                    <AnswerCard
-                      id={message.id}
-                      summary={message.content}
-                      evidence={sampleEvidences}
-                      preview="육아휴직 정책에 대한 상세한 내용은 사내 인트라넷의 HR 정책 섹션에서 확인하실 수 있습니다. 추가적으로 각 지점별로 차이가 있을 수 있으니 인사팀 담당자와 상담하시기 바랍니다."
-                      nextDestinations={nextDestinations}
-                      onEvidenceClick={onEvidenceClick}
-                      className="mt-4"
-                    />
-                    
-                    {/* Feedback Bar */}
-                    <div className="flex items-center justify-center gap-4 mt-4 p-3 bg-muted/30 rounded-lg">
-                      <span className="text-sm text-muted-foreground">이 답변이 도움되었나요?</span>
-                      <div className="flex items-center gap-2">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleFeedback(message.id, true)}
-                          className="text-muted-foreground hover:text-success"
-                        >
-                          <Icon name="check-circle" size={16} />
-                          도움됨
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleFeedback(message.id, false)}
-                          className="text-muted-foreground hover:text-destructive"
-                        >
-                          <Icon name="help-circle" size={16} />
-                          안도움됨
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                )}
               </div>
             ))}
             <div ref={messagesEndRef} />

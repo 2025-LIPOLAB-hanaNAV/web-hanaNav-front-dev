@@ -78,12 +78,6 @@ export function AppShell({
         </div>
         
         <div className="flex items-center gap-2">
-<<<<<<< HEAD
-          <Button variant="ghost" size="sm">
-            <Icon name="info" size={16} />
-          </Button>
-=======
->>>>>>> 1bcdc64e778292689b27388d78a561555c4f74af
           <Button
             variant="ghost"
             size="sm"

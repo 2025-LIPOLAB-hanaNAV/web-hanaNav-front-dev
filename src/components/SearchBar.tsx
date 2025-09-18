@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { Input } from './ui/input';
+import { Textarea } from './ui/textarea';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Icon } from './ui/Icon';
@@ -39,8 +40,15 @@ export function SearchBar({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
+  const handleSubmit = (e?: React.FormEvent) => {
+    e?.preventDefault();
     if (query.trim() || attachedFiles.length > 0) {
       // 마법 이펙트가 있는 경우 마법 검색 실행
       if (onMagicSearch) {
@@ -145,15 +153,17 @@ export function SearchBar({
           <div className="flex items-center justify-around bg-[rgba(0,0,0,0)] rounded-[0px] w-full max-w-7xl min-w-[800px] m-[0px] px-4 py-0">
             <Icon name="search" size={24} className="text-muted-foreground flex-shrink-0" />
             
-            <Input
+            <Textarea
               value={query}
               onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={handleKeyDown}
               placeholder={placeholder}
               className={cn(
-                "border-0 bg-transparent text-xl px-0 shadow-none focus-visible:ring-0 font-light placeholder:text-muted-foreground/60 placeholder:font-light py-2 transition-all duration-300",
+                "border-0 bg-transparent text-xl px-0 shadow-none focus-visible:ring-0 font-light placeholder:text-muted-foreground/60 placeholder:font-light py-2 transition-all duration-300 resize-none min-h-[2.5rem] max-h-32",
                 isMagicActive && "text-primary glow-text"
               )}
               disabled={isLoading || isMagicActive}
+              rows={1}
             />
             
             <div className="flex items-center gap-3 flex-shrink-0">

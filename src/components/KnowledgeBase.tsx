@@ -9,12 +9,24 @@ import { Badge } from './ui/badge';
 import { Icon } from './ui/Icon';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { cn } from './ui/utils';
-import { createDataset, listDatasets, deleteDatasets, type Dataset, uploadDocuments, listDocuments, type DocumentItem, parseDocuments, stopParsing, listChunks, type ChunkItem, addChunk, deleteChunks, updateChunk, retrieveChunks } from '../services/ragflow';
+import { createDataset, listDatasets, deleteDatasets, type Dataset, uploadDocuments, listDocuments, type DocumentItem, parseDocuments, stopParsing, deleteDocuments, listChunks, type ChunkItem, addChunk, deleteChunks, updateChunk, retrieveChunks } from '../services/ragflow';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
 
-export function KnowledgeBase() {
+interface KnowledgeBaseProps {
+  initialDatasetId?: string;
+  initialDocId?: string;
+  initialChunkId?: string;
+  initialHighlight?: string;
+}
+
+function KnowledgeBase({
+  initialDatasetId,
+  initialDocId,
+  initialChunkId,
+  initialHighlight
+}: KnowledgeBaseProps = {}) {
   // Dataset state
   const [datasets, setDatasets] = useState<Dataset[]>([]);
   const [dsLoading, setDsLoading] = useState(false);
@@ -50,6 +62,7 @@ export function KnowledgeBase() {
   const [retrieveResults, setRetrieveResults] = useState<any[]>([]);
   const [retrievePageSize, setRetrievePageSize] = useState(10);
   const [highlightSearch, setHighlightSearch] = useState(true);
+  const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
 
   const loadDatasets = async () => {
     setDsLoading(true);
@@ -84,6 +97,36 @@ export function KnowledgeBase() {
   useEffect(() => {
     loadDatasets();
   }, []);
+
+  // Handle initial values for navigation from chat sources
+  useEffect(() => {
+    if (initialDatasetId && initialDatasetId !== selectedDatasetId) {
+      setSelectedDatasetId(initialDatasetId);
+    }
+  }, [initialDatasetId]);
+
+  useEffect(() => {
+    if (initialDocId && initialDocId !== selectedDocId && selectedDatasetId) {
+      setSelectedDocId(initialDocId);
+    }
+  }, [initialDocId, selectedDatasetId]);
+
+  useEffect(() => {
+    if (initialChunkId) {
+      setHighlightedChunkId(initialChunkId);
+      // Auto-scroll to the chunk (simple implementation)
+      setTimeout(() => {
+        const chunkElement = document.querySelector(`[data-chunk-id="${initialChunkId}"]`);
+        if (chunkElement) {
+          chunkElement.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }
+      }, 1000);
+    }
+    if (initialHighlight) {
+      setRetrieveQ(initialHighlight);
+      setHighlightSearch(true);
+    }
+  }, [initialChunkId, initialHighlight]);
 
   useEffect(() => {
     if (selectedDatasetId) loadDocuments(selectedDatasetId);
@@ -160,6 +203,21 @@ export function KnowledgeBase() {
     }
   };
 
+  const deleteSelectedDocuments = async () => {
+    if (!selectedDatasetId || selectedDocIds.length === 0) return;
+    setBusy(true);
+    try {
+      await deleteDocuments(selectedDatasetId, selectedDocIds);
+      setSelectedDocIds([]);
+      await loadDocuments(selectedDatasetId);
+      setDocsError(null);
+    } catch (err) {
+      setDocsError('선택된 문서 삭제 실패');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const loadChunks = async () => {
     if (!selectedDatasetId || !selectedDocId) return;
     setChunksLoading(true);
@@ -210,7 +268,7 @@ export function KnowledgeBase() {
   const handleEditChunk = (chunk: ChunkItem) => {
     setEditingChunk(chunk);
     setEditChunkContent(chunk.content);
-    setEditChunkKeywords(chunk.important_keywords?.join(', ') || '');
+    setEditChunkKeywords(Array.isArray(chunk.important_keywords) ? chunk.important_keywords.join(', ') : (chunk.important_keywords || ''));
     setIsEditChunkOpen(true);
   };
 
@@ -237,6 +295,21 @@ export function KnowledgeBase() {
     }
   };
 
+  // 하이라이트 함수 추가
+  const highlightKeywords = (text: string, keywords: string): string => {
+    if (!keywords.trim() || !highlightSearch) return text;
+
+    const keywordList = keywords.split(/\s+/).filter(word => word.length > 0);
+    let highlightedText = text;
+
+    keywordList.forEach(keyword => {
+      const regex = new RegExp(`(${keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')})`, 'gi');
+      highlightedText = highlightedText.replace(regex, '<mark class="bg-yellow-200 dark:bg-yellow-800 px-1 py-0.5 rounded font-semibold">$1</mark>');
+    });
+
+    return highlightedText;
+  };
+
   const handleRetrieve = async () => {
     const q = retrieveQ.trim();
     if (!q || !selectedDatasetId) return;
@@ -250,8 +323,14 @@ export function KnowledgeBase() {
         document_ids: selectedDocId ? [selectedDocId] : undefined,
         page: 1,
         page_size: retrievePageSize,
-        highlight: highlightSearch
+        highlight: highlightSearch,
+        similarity_threshold: 0.1, // 낮은 임계값으로 더 많은 결과 포함
+        vector_similarity_weight: 0.7, // 벡터 유사도 가중치 설정
+        top_k: Math.min(retrievePageSize * 2, 100), // 리랭킹을 위해 더 많은 후보 검색
+        keyword: true, // 키워드 검색도 활성화
+        rerank_id: 'BAAI/bge-reranker-v2-m3' // 리랭킹 모델 활성화
       });
+      console.log('Retrieve Results Debug:', res.chunks);
       setRetrieveCount(res.total);
       setRetrieveResults(res.chunks || []);
     } catch (err) {
@@ -315,6 +394,9 @@ export function KnowledgeBase() {
                 <Button variant="outline" size="sm" onClick={() => loadDocuments(selectedDatasetId)} disabled={!selectedDatasetId || docsLoading}>
                   새로고침
                 </Button>
+                <Button variant="destructive" size="sm" onClick={deleteSelectedDocuments} disabled={selectedDocIds.length === 0 || busy}>
+                  <Icon name="trash-2" size={16} /> 선택 삭제
+                </Button>
               </div>
 
               {docsError && (
@@ -365,7 +447,7 @@ export function KnowledgeBase() {
                             </TableCell>
                             <TableCell className="max-w-[360px] truncate">{d.name}</TableCell>
                             <TableCell className="text-sm text-muted-foreground">
-                              {String(d.run ?? d.status ?? '')}{d.progress != null ? ` • ${Math.round((d.progress as number) * 100) / 100}%` : ''}
+                              {String(d.run ?? d.status ?? '')}{d.progress != null ? ` • ${Math.round((d.progress as number) * 100)}%` : ''}
                             </TableCell>
                             <TableCell className="text-sm text-muted-foreground">{d.size ? `${d.size}B` : '-'}</TableCell>
                             <TableCell className="text-right text-xs text-muted-foreground">{d.update_time ? new Date(d.update_time).toLocaleString() : ''}</TableCell>
@@ -480,12 +562,32 @@ export function KnowledgeBase() {
                     ) : (
                       chunks.map(ch => {
                         const checked = selectedChunkIds.includes(ch.id);
+                        const isHighlighted = highlightedChunkId === ch.id;
                         return (
-                          <TableRow key={ch.id}>
+                          <TableRow
+                            key={ch.id}
+                            className={cn(
+                              "transition-colors",
+                              isHighlighted && "bg-yellow-100 dark:bg-yellow-900/20 border-l-4 border-l-yellow-500"
+                            )}
+                            data-chunk-id={ch.id}
+                          >
                             <TableCell className="align-top">
                               <Checkbox checked={checked} onCheckedChange={() => setSelectedChunkIds(prev => checked ? prev.filter(id => id !== ch.id) : [...prev, ch.id])} />
                             </TableCell>
-                            <TableCell className="max-w-[520px] whitespace-pre-wrap break-words">{ch.content}</TableCell>
+                            <TableCell className="max-w-[520px] whitespace-pre-wrap break-words">
+                              {isHighlighted ? (
+                                <div className="p-2 bg-yellow-50 dark:bg-yellow-900/10 rounded border border-yellow-200 dark:border-yellow-800">
+                                  <div className="text-xs text-yellow-600 dark:text-yellow-400 font-medium mb-1 flex items-center gap-1">
+                                    <Icon name="star" size={12} />
+                                    참조된 출처
+                                  </div>
+                                  {ch.content}
+                                </div>
+                              ) : (
+                                ch.content
+                              )}
+                            </TableCell>
                             <TableCell className="text-xs text-muted-foreground align-top">{ch.id}</TableCell>
                             <TableCell className="align-top">
                               <Button
@@ -517,6 +619,11 @@ export function KnowledgeBase() {
                       placeholder="질문을 입력하세요"
                       value={retrieveQ}
                       onChange={(e) => setRetrieveQ(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' && !retrieveLoading && retrieveQ.trim()) {
+                          handleRetrieve();
+                        }
+                      }}
                     />
                     <Button
                       variant="outline"
@@ -554,21 +661,85 @@ export function KnowledgeBase() {
                     )}
                   </div>
                   {retrieveResults.length > 0 && (
-                    <div className="mt-4 space-y-2 max-h-96 overflow-y-auto">
-                      <div className="text-sm font-medium mb-2">검색 결과:</div>
-                      {retrieveResults.map((result, index) => (
-                        <div key={index} className="p-3 border rounded-md bg-muted/30">
-                          <div className="text-xs text-muted-foreground mb-1">
-                            Score: {result.similarity_score?.toFixed(4) || 'N/A'}
+                    <div className="mt-4 space-y-3 max-h-96 overflow-y-auto">
+                      <div className="text-sm font-medium mb-3 flex items-center gap-2">
+                        <Icon name="search" size={16} />
+                        검색 결과:
+                        {highlightSearch && (
+                          <Badge variant="outline" className="text-xs">
+                            <Icon name="star" size={12} className="mr-1" />
+                            하이라이트 ON
+                          </Badge>
+                        )}
+                      </div>
+                      {retrieveResults.map((result, index) => {
+                        // Try multiple possible score fields
+                        const score = result.similarity_score || result.similarity || result.score ||
+                                     result.vector_similarity || result.rank_score || 0;
+                        const scorePercentage = Math.round(score * 100);
+                        const scoreColor = scorePercentage >= 80 ? 'text-green-600 dark:text-green-400' :
+                                         scorePercentage >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
+                                         'text-red-600 dark:text-red-400';
+
+                        return (
+                          <div key={index} className="p-4 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant="secondary" className="text-xs">
+                                  #{index + 1}
+                                </Badge>
+                                <div className={`text-sm font-semibold ${scoreColor}`}>
+                                  유사도: {scorePercentage}%
+                                </div>
+                                {score !== undefined && (
+                                  <div className="text-xs text-muted-foreground">
+                                    (정확값: {score.toFixed(4)})
+                                  </div>
+                                )}
+                              </div>
+                              <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
+                                <div
+                                  className={`h-full transition-all duration-300 ${
+                                    scorePercentage >= 80 ? 'bg-green-500' :
+                                    scorePercentage >= 60 ? 'bg-yellow-500' :
+                                    'bg-red-500'
+                                  }`}
+                                  style={{ width: `${Math.max(scorePercentage, 5)}%` }}
+                                />
+                              </div>
+                            </div>
+                            <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
+                              {highlightSearch ? (
+                                <div dangerouslySetInnerHTML={{
+                                  __html: result.content_with_weight
+                                    ? result.content_with_weight
+                                    : highlightKeywords(result.content || '', retrieveQ)
+                                }} />
+                              ) : (
+                                result.content
+                              )}
+                            </div>
+                            {(result.document_name || result.chunk_id) && (
+                              <div className="mt-2 pt-2 border-t border-border/50">
+                                <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                  {result.document_name && (
+                                    <div className="flex items-center gap-1">
+                                      <Icon name="file-text" size={12} />
+                                      문서: {result.document_name}
+                                    </div>
+                                  )}
+                                  {result.chunk_id && (
+                                    <div className="flex items-center gap-1">
+                                      <Icon name="hash" size={12} />
+                                      청크: {result.chunk_id.slice(0, 8)}...
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                           </div>
-                          <div className="text-sm whitespace-pre-wrap break-words">
-                            {highlightSearch && result.content_with_weight
-                              ? result.content_with_weight
-                              : result.content
-                            }
-                          </div>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>

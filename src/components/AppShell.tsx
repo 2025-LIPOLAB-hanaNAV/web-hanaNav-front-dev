@@ -14,6 +14,7 @@ interface AppShellProps {
   onThemeToggle: () => void;
   showRightPanel?: boolean;
   rightPanelContent?: React.ReactNode;
+  notificationCount?: number;
 }
 
 export function AppShell({ 
@@ -23,7 +24,8 @@ export function AppShell({
   isDark, 
   onThemeToggle,
   showRightPanel = false,
-  rightPanelContent 
+  rightPanelContent,
+  notificationCount = 0
 }: AppShellProps) {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
 

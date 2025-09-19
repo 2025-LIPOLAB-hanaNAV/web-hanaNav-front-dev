@@ -74,8 +74,8 @@ export function ChatBubble({
         className
       )}>
         {!isUser && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-accent">
-            <HanaNaviLogo size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-purple-200 shadow-sm">
+            <span className="text-lg">🤖</span>
           </div>
         )}
 
@@ -110,11 +110,11 @@ export function ChatBubble({
       className
     )}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-accent flex-shrink-0">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-purple-200 shadow-sm flex-shrink-0">
           {isSystem ? (
-            <Icon name="shield" size={16} className="text-white" />
+            <Icon name="shield" size={16} className="text-purple-600" />
           ) : (
-            <HanaNaviLogo size={20} className="text-white" />
+            <span className="text-lg">🤖</span>
           )}
         </div>
       )}

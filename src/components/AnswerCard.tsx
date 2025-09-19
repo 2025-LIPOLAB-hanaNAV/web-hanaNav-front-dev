@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
@@ -141,9 +142,9 @@ export function AnswerCard({
         <div className="flex items-center gap-2">
           <h3 className="font-medium">요약</h3>
         </div>
-        <p className="leading-relaxed text-foreground">
-          {summary}
-        </p>
+        <div className="leading-relaxed text-foreground prose prose-sm max-w-none dark:prose-invert">
+          <ReactMarkdown>{summary}</ReactMarkdown>
+        </div>
       </div>
 
       <Separator />

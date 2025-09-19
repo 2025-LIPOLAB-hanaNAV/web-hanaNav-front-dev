@@ -6,8 +6,7 @@
       "Bash(git push:*)",
       "Bash(npm run dev:*)",
       "Bash(npm install)",
-      "Bash(pkill:*)",
-      "Read(//mnt/c/Users/JJ/Pictures/Screenshots/**)"
+      "Bash(pkill:*)"
     ],
     "deny": [],
     "ask": []

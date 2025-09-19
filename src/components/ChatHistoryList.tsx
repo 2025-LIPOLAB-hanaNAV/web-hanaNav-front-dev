@@ -24,6 +24,7 @@ type ChatSession = {
 
 type Props = {
   onOpenSession?: (session: ChatSession) => void;
+  activeSessionKey?: string;
 };
 
 function timeAgo(iso: string): string {
@@ -38,7 +39,7 @@ function timeAgo(iso: string): string {
   return '방금 전';
 }
 
-export function ChatHistoryList({ onOpenSession }: Props) {
+export function ChatHistoryList({ onOpenSession, activeSessionKey }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -283,9 +284,9 @@ export function ChatHistoryList({ onOpenSession }: Props) {
   };
 
   return (
-    <div className="h-full flex flex-col font-sans">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden font-sans">
       {/* Header */}
-      <div className="p-6 border-b">
+      <div className="flex-shrink-0 border-b p-6">
         <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between mb-4 gap-4">
           <div className="flex items-center gap-3 min-w-0">
             <HanaNaviLogo size={40} className="opacity-80 flex-shrink-0" />
@@ -356,17 +357,19 @@ export function ChatHistoryList({ onOpenSession }: Props) {
         )}
 
         {/* List */}
-        <Card className="bg-elevated p-0 overflow-hidden">
+        <Card className="bg-elevated p-0 flex-1 overflow-hidden">
           {loading ? (
-            <div className="p-10 text-center text-muted-foreground">불러오는 중...</div>
+            <div className="flex h-full items-center justify-center px-6 py-10 text-muted-foreground">
+              불러오는 중...
+            </div>
           ) : visible.length === 0 ? (
-            <div className="p-10 text-center text-muted-foreground">
+            <div className="flex h-full items-center justify-center px-6 py-10 text-center text-muted-foreground">
               {searchQuery.trim() ? '검색 결과가 없습니다.' : '저장된 채팅 기록이 없습니다.'}
             </div>
           ) : (
-            <div className="divide-y">
+            <div className="flex h-full flex-col">
               {visible.length > 0 && (
-                <div className="flex items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
+                <div className="flex flex-shrink-0 items-center gap-3 px-4 py-3 text-sm text-muted-foreground">
                   <Checkbox
                     checked={allVisibleSelected}
                     onCheckedChange={(value) => toggleSelectVisible(Boolean(value))}
@@ -375,75 +378,101 @@ export function ChatHistoryList({ onOpenSession }: Props) {
                   <span>현재 보기 전체 선택</span>
                 </div>
               )}
-              {visible.map((s) => (
-                <div key={`${s.assistantId || 'unknown'}:${s.id}`} className="group relative">
-                  <div className="gap-x-3 py-3 px-4 flex items-center">
-                    <Checkbox
-                      checked={!!selected[sessionKey(s)]}
-                      onCheckedChange={(value) => toggleSelection(s, Boolean(value))}
-                      aria-label="채팅 선택"
-                      disabled={bulkDeleting || !!deleting[sessionKey(s)]}
-                    />
-                    <div className="flex grow flex-col min-w-0">
-                      <button
-                        className="text-left group/title block overflow-x-hidden"
-                        onClick={() => onOpenSession?.(s)}
-                      >
-                        <div className="flex items-center gap-2">
-                          <div className={cn(
-                            'line-clamp-1 break-all font-medium',
-                            'md:group-hover/title:text-primary'
-                          )}>
-                            {s.title}
-                          </div>
-                          {s.starred && (
-                            <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
-                          )}
-                        </div>
-                        <div className="mt-1 line-clamp-2 text-sm text-muted-foreground">
-                          {s.preview}
-                        </div>
-                      </button>
-                    </div>
-                    <div className="shrink-0 flex items-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-muted-foreground"
-                        onClick={() => toggleStar(s.id)}
-                      >
-                        <Star
+              <div className="flex-1 overflow-y-auto">
+                <div className="divide-y">
+                  {visible.map((s) => {
+                const key = sessionKey(s);
+                const isActive = activeSessionKey === key;
+                return (
+                  <div
+                    key={key}
+                    className={cn(
+                      'group relative transition-colors',
+                      isActive && 'bg-primary/5'
+                    )}
+                  >
+                    <div className="gap-x-3 py-3 px-4 flex items-center">
+                      <Checkbox
+                        checked={!!selected[key]}
+                        onCheckedChange={(value) => toggleSelection(s, Boolean(value))}
+                        aria-label="채팅 선택"
+                        disabled={bulkDeleting || !!deleting[key]}
+                      />
+                      <div className="flex grow flex-col min-w-0">
+                        <button
                           className={cn(
-                            'h-4 w-4',
-                            s.starred ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                            'text-left group/title block overflow-x-hidden rounded-md px-1 py-1',
+                            isActive && 'bg-primary/10'
                           )}
-                        />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="text-destructive"
-                        onClick={() => handleDelete(s)}
-                        disabled={bulkDeleting || !!deleting[sessionKey(s)]}
-                      >
-                        삭제
-                      </Button>
+                          onClick={() => onOpenSession?.(s)}
+                          aria-pressed={isActive}
+                        >
+                          <div className="flex items-center gap-2">
+                            <div
+                              className={cn(
+                                'line-clamp-1 break-all font-medium',
+                                'md:group-hover/title:text-primary',
+                                isActive && 'text-primary'
+                              )}
+                            >
+                              {s.title}
+                            </div>
+                            {s.starred && (
+                              <Star className="h-3.5 w-3.5 text-yellow-500 fill-yellow-500" />
+                            )}
+                          </div>
+                          <div
+                            className={cn(
+                              'mt-1 line-clamp-2 text-sm text-muted-foreground',
+                              isActive && 'text-primary/90'
+                            )}
+                          >
+                            {s.preview}
+                          </div>
+                        </button>
+                      </div>
+                      <div className="shrink-0 flex items-center gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-muted-foreground"
+                          onClick={() => toggleStar(s.id)}
+                        >
+                          <Star
+                            className={cn(
+                              'h-4 w-4',
+                              s.starred ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
+                            )}
+                          />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-destructive"
+                          onClick={() => handleDelete(s)}
+                          disabled={bulkDeleting || !!deleting[key]}
+                        >
+                          삭제
+                        </Button>
+                      </div>
+                    </div>
+                    <div className="px-4 pb-3 -mt-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <div className="flex items-center gap-2">
+                          <Clock className="h-3.5 w-3.5 -translate-y-[1px]" />
+                          <span>{timeAgo(s.updatedAt)}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <MessageSquareText className="h-3.5 w-3.5 -translate-y-[1px]" />
+                          <span>{s.messageCount}개 메시지</span>
+                        </div>
+                      </div>
                     </div>
                   </div>
-                  <div className="px-4 pb-3 -mt-1">
-                    <div className="flex items-center justify-between text-xs text-muted-foreground">
-                      <div className="flex items-center gap-2">
-                        <Clock className="h-3.5 w-3.5 -translate-y-[1px]" />
-                        <span>{timeAgo(s.updatedAt)}</span>
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <MessageSquareText className="h-3.5 w-3.5 -translate-y-[1px]" />
-                        <span>{s.messageCount}개 메시지</span>
-                      </div>
-                    </div>
-                  </div>
+                );
+                  })}
                 </div>
-              ))}
+              </div>
             </div>
           )}
         </Card>

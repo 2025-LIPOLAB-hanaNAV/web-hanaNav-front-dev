@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppShell } from './components/AppShell';
 import { ChatPage } from './components/ChatPage';
 import { HomePage } from './components/HomePage';
@@ -37,6 +37,7 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchFiles, setSearchFiles] = useState<File[]>([]);
   const [initialSession, setInitialSession] = useState<{ assistantId: string; sessionId: string } | undefined>(undefined);
+  const [librarySelectedSession, setLibrarySelectedSession] = useState<{ assistantId: string; sessionId: string } | null>(null);
   const [knowledgeBaseProps, setKnowledgeBaseProps] = useState<{
     initialDatasetId?: string;
     initialDocId?: string;
@@ -48,6 +49,12 @@ export default function App() {
     setIsDarkMode(!isDarkMode);
     document.documentElement.classList.toggle('dark');
   };
+
+  useEffect(() => {
+    if (!librarySelectedSession && initialSession) {
+      setLibrarySelectedSession(initialSession);
+    }
+  }, [initialSession, librarySelectedSession]);
 
   const handleSearch = (query: string, files?: File[]) => {
     setSearchQuery(query);
@@ -100,6 +107,7 @@ export default function App() {
       case 'chat':
         return (
           <ChatPage
+            key={initialSession ? `${initialSession.assistantId}:${initialSession.sessionId}` : 'chat-root'}
             onEvidenceClick={handleEvidenceClick}
             onSourceClick={handleSourceClick}
             initialQuery={searchQuery}
@@ -113,15 +121,44 @@ export default function App() {
         );
       case 'library':
         return (
-          <ChatHistoryList
-            onOpenSession={(session) => {
-              // session carries assistantId optionally
-              if ((session as any).assistantId) {
-                setInitialSession({ assistantId: (session as any).assistantId, sessionId: session.id });
-              }
-              setCurrentView('chat');
-            }}
-          />
+          <div className="h-full grid grid-cols-1 md:grid-cols-[480px_minmax(0,1fr)]">
+            <div className="border-b md:border-b-0 md:border-r flex flex-col min-h-0">
+              <ChatHistoryList
+                activeSessionKey={librarySelectedSession ? `${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}` : undefined}
+                onOpenSession={(session) => {
+                  const assistantId = (session as any).assistantId as string | undefined;
+                  if (!assistantId) return;
+                  const payload = { assistantId, sessionId: session.id };
+                  setLibrarySelectedSession(payload);
+                  setInitialSession(payload);
+
+                  const shouldSwitchToChat = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
+                  if (shouldSwitchToChat) {
+                    setCurrentView('chat');
+                  }
+                }}
+              />
+            </div>
+            <div className="hidden md:flex flex-col min-h-0">
+              {librarySelectedSession ? (
+                <div className="flex-1 min-h-0 overflow-hidden">
+                  <ChatPage
+                    key={`${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}`}
+                    onEvidenceClick={handleEvidenceClick}
+                    onSourceClick={handleSourceClick}
+                    initialSession={librarySelectedSession}
+                  />
+                </div>
+              ) : (
+                <div className="m-auto px-8 text-center text-muted-foreground">
+                  <h2 className="text-lg font-semibold mb-2">채팅 기록을 선택하세요</h2>
+                  <p className="text-sm">
+                    선택한 대화가 오른쪽에 로드되고, 바로 이어서 채팅을 진행할 수 있습니다.
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
         );
       case 'documents':
         return <KnowledgeBase {...knowledgeBaseProps} />;

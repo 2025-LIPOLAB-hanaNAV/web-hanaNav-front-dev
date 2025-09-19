@@ -1,4 +1,4 @@
-import { RAGFLOW_BASE_URL, RAGFLOW_API_KEY } from '../config';
+import { RAGFLOW_BASE_URL, RAGFLOW_API_KEY, USE_PROXY, PROXY_BASE_URL } from '../config';
 
 type ListDatasetsParams = {
   page?: number;
@@ -22,15 +22,25 @@ export type Dataset = {
 type ApiResponse<T> = { code: number; data?: T; message?: string };
 
 async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
-  if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
-  if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
-  const url = new URL(path, RAGFLOW_BASE_URL);
-  const res = await fetch(url.toString(), {
+  let url: string;
+  let headers: Record<string, string> = {
+    ...(init?.headers as Record<string, string> || {}),
+  };
+
+  if (USE_PROXY) {
+    // 프록시 서버 사용
+    url = `/api/ragflow${path}`;
+  } else {
+    // 직접 연결
+    if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+    if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+    url = new URL(path, RAGFLOW_BASE_URL).toString();
+    headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+  }
+
+  const res = await fetch(url, {
     ...init,
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-      ...(init?.headers || {}),
-    },
+    headers,
   });
   const json = await res.json() as ApiResponse<any>;
   if (!res.ok || json.code !== 0) {
@@ -97,16 +107,26 @@ type ListDocumentsResponse = { docs: DocumentItem[]; total: number };
 
 export async function uploadDocuments(datasetId: string, files: File[]): Promise<DocumentItem[]> {
   if (!files || files.length === 0) return [];
-  if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
-  if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
-  const url = new URL(`/api/v1/datasets/${datasetId}/documents`, RAGFLOW_BASE_URL);
+
+  let url: string;
+  let headers: Record<string, string> = {};
+
+  if (USE_PROXY) {
+    // 프록시 서버 사용
+    url = `/api/ragflow/api/v1/datasets/${datasetId}/documents`;
+  } else {
+    // 직접 연결
+    if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+    if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+    url = new URL(`/api/v1/datasets/${datasetId}/documents`, RAGFLOW_BASE_URL).toString();
+    headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+  }
+
   const form = new FormData();
   files.forEach(f => form.append('file', f));
-  const res = await fetch(url.toString(), {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-    },
+    headers,
     body: form,
   });
   const json = await res.json() as ApiResponse<DocumentItem[]>;
@@ -362,13 +382,25 @@ export type CompletionResult = {
 };
 
 export async function converseOnce(chatId: string, body: { question: string; session_id?: string; user_id?: string; stream?: boolean }): Promise<CompletionResult> {
-  const url = `/api/v1/chats/${chatId}/completions`;
-  const res = await fetch(new URL(url, RAGFLOW_BASE_URL!).toString(), {
+  let url: string;
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  if (USE_PROXY) {
+    // 프록시 서버 사용
+    url = `/api/ragflow/api/v1/chats/${chatId}/completions`;
+  } else {
+    // 직접 연결
+    if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+    if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+    url = new URL(`/api/v1/chats/${chatId}/completions`, RAGFLOW_BASE_URL).toString();
+    headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+  }
+
+  const res = await fetch(url, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
+    headers,
     body: JSON.stringify({ ...body, stream: false }),
   });
   const ct = res.headers.get('content-type') || '';

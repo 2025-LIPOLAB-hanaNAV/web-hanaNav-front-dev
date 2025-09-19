@@ -33,6 +33,13 @@ interface ChatBubbleProps {
   isEvidenceLow?: boolean;
   sources?: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
+  piiScore?: number;
+  promptInjection?: {
+    injection_detected: boolean;
+    attack_types: string[];
+    confidence: number;
+    details: string;
+  };
 }
 
 export function ChatBubble({
@@ -47,7 +54,9 @@ export function ChatBubble({
   hasPII = false,
   isEvidenceLow = false,
   sources,
-  onSourceClick
+  onSourceClick,
+  piiScore,
+  promptInjection
 }: ChatBubbleProps) {
   const isUser = type === 'user';
   const isSystem = type === 'system';
@@ -175,6 +184,24 @@ export function ChatBubble({
                   <Badge variant="outline" className="text-xs">
                     근거 {evidenceCount}개
                   </Badge>
+                )}
+
+                {promptInjection?.injection_detected ? (
+                  <div className="flex items-center gap-1">
+                    <div className="bg-red-100 dark:bg-red-900 px-2 py-1 rounded-md flex items-center gap-1">
+                      <Icon name="alert-triangle" size={12} />
+                      <span className="text-sm font-medium text-red-700 dark:text-red-300">
+                        Injection {Math.round(promptInjection.confidence * 100)}%
+                      </span>
+                    </div>
+                  </div>
+                ) : typeof piiScore === 'number' && (
+                  <div className="flex items-center gap-1">
+                    <div className="bg-blue-100 dark:bg-blue-900 px-2 py-1 rounded-md flex items-center gap-1">
+                      <Icon name="shield" size={12} />
+                      <span className="text-sm font-medium text-blue-700 dark:text-blue-300">PII {piiScore}</span>
+                    </div>
+                  </div>
                 )}
               </div>
 

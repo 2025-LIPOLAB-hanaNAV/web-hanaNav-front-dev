@@ -5,6 +5,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '.
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
 import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, getChatSession, type ChatAssistant, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
+import { checkPIIGuard, type PIIGuardResponse } from '../services/piiGuard';
 import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
@@ -25,6 +26,13 @@ interface ChatMessage {
   hasPII?: boolean;
   isEvidenceLow?: boolean;
   sources?: SourceReference[];
+  piiScore?: number;
+  promptInjection?: {
+    injection_detected: boolean;
+    attack_types: string[];
+    confidence: number;
+    details: string;
+  };
 }
 
 interface SourceReference {
@@ -484,9 +492,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       id: Date.now().toString(),
       type: 'user',
       content: query,
-      timestamp: new Date().toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      timestamp: new Date().toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit'
       })
     };
 
@@ -502,10 +510,29 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       timestamp: '',
       state: 'loading'
     };
-    
+
     setMessages(prev => [...prev, loadingMessage]);
 
     try {
+      // 1. PII Guard API 호출
+      const piiResult = await checkPIIGuard(query);
+
+      // 2. PII Score 75 이상이거나 blocked면 에러 메시지 출력
+      if (piiResult.pii_score >= 75 || piiResult.blocked) {
+        const blockedMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          type: 'assistant',
+          content: piiResult.answer,
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          state: 'pii-detected',
+          piiScore: piiResult.pii_score,
+          promptInjection: piiResult.prompt_injection
+        };
+        setMessages(prev => prev.slice(0, -1).concat(blockedMessage));
+        return;
+      }
+
+      // 3. PII 검사 통과 시 RAGFlow 질의 진행
       const ephemeralId = await ensureEphemeralContext(files);
       const activeAssistantId = ephemeralId || assistantId || defaultAssistantByMode[currentMode];
       if (!activeAssistantId) throw new Error('어시스턴트를 선택하거나 기본 ID를 설정하세요.');
@@ -608,7 +635,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         responseTime: dt,
         hasPII: false,
         isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0),
-        sources: sources.length > 0 ? sources : undefined
+        sources: sources.length > 0 ? sources : undefined,
+        piiScore: piiResult.pii_score,
+        promptInjection: piiResult.prompt_injection
       };
       setMessages(prev => prev.slice(0, -1).concat(assistantMessage));
     } catch (err: any) {
@@ -946,6 +975,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                   isEvidenceLow={message.isEvidenceLow}
                   sources={message.sources}
                   onSourceClick={onSourceClick}
+                  piiScore={message.piiScore}
+                  promptInjection={message.promptInjection}
                 />
                 
               </div>

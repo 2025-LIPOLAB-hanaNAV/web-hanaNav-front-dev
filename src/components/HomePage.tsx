@@ -75,7 +75,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
       id: 'pension',
       name: '연금',
       icon: 'coins',
-      color: 'bg-purple-500',
+      color: 'bg-gray-500',
       questions: ['연금상품', '수령방법', '세제혜택', '가입조건']
     }
   ];
@@ -143,7 +143,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                 onMagicSearch={(query, files) => {
                   // 마법 이펙트 완료 후 실제 검색 실행됨
                 }}
-                placeholder="어디로 떠나시겠어요? (예: 주택담보대출 금리 조건)"
+                placeholder="어디로 떠나시겠어요? (예: 보이스피싱 업무처리절차)"
                 className="max-w-[1440px] mx-auto"
               />
             </div>

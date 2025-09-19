@@ -1,4 +1,5 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
 import { Card } from './ui/card';
 import { Badge } from './ui/badge';
 import { Avatar, AvatarFallback, AvatarImage } from './ui/avatar';
@@ -51,48 +52,21 @@ export function ChatBubble({
   const isUser = type === 'user';
   const isSystem = type === 'system';
 
-  // Minimal, safe Markdown renderer (escape HTML first, then inject basic tags)
-  const escapeHtml = (str: string) =>
-    str
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/\"/g, '&quot;')
-      .replace(/'/g, '&#39;');
-
-  const mdToHtml = (md: string) => {
-    let text = escapeHtml(md);
-    // headings: ###, ##, # (map to h4/h3/h2 for compactness)
-    text = text.replace(/^###\s+(.+)$/gm, '<h4 class="font-medium text-sm mt-2 mb-1">$1</h4>');
-    text = text.replace(/^##\s+(.+)$/gm, '<h3 class="font-medium text-base mt-2 mb-1">$1</h3>');
-    text = text.replace(/^#\s+(.+)$/gm, '<h2 class="font-medium text-lg mt-2 mb-1">$1</h2>');
-    // bold **text**
-    text = text.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-    // italic *text*
-    text = text.replace(/(?<!\*)\*([^*]+)\*(?!\*)/g, '<em>$1</em>');
-    // unordered lists: group consecutive - or * lines
-    const lines = text.split(/\r?\n/);
-    const out: string[] = [];
-    let inList = false;
-    for (const line of lines) {
-      const m = line.match(/^\s*[-\*]\s+(.*)$/);
-      if (m) {
-        if (!inList) { inList = true; out.push('<ul class="list-disc pl-5 my-2 space-y-1">'); }
-        out.push(`<li>${m[1]}</li>`);
-      } else {
-        if (inList) { out.push('</ul>'); inList = false; }
-        if (line.trim().length === 0) {
-          out.push('<br/>');
-        } else {
-          out.push(`<p>${line}</p>`);
-        }
-      }
-    }
-    if (inList) out.push('</ul>');
-    return out.join('\n');
-  };
 
   if (state === 'loading') {
+    const [loadingMessage, setLoadingMessage] = React.useState('생각중...');
+
+    React.useEffect(() => {
+      const messages = ['생각중...', '고민중...', '길을 찾는중...', '자료를 검토중...', '답변을 준비중...'];
+      let index = 0;
+      const interval = setInterval(() => {
+        index = (index + 1) % messages.length;
+        setLoadingMessage(messages[index]);
+      }, 1500);
+
+      return () => clearInterval(interval);
+    }, []);
+
     return (
       <div className={cn(
         "flex gap-3",
@@ -100,17 +74,21 @@ export function ChatBubble({
         className
       )}>
         {!isUser && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-accent">
-            <HanaNaviLogo size={20} className="text-white" />
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 shadow-sm">
+            <span className="text-lg">🤖</span>
           </div>
         )}
-        
+
         <div className={cn(
           "max-w-[70%] space-y-2",
           isUser && "order-first"
         )}>
           <Card className="p-4">
             <div className="space-y-3">
+              <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                <div className="w-2 h-2 bg-primary rounded-full animate-pulse"></div>
+                <span className="animate-pulse">{loadingMessage}</span>
+              </div>
               <Skeleton className="h-4 w-full" />
               <Skeleton className="h-4 w-4/5" />
               <Skeleton className="h-4 w-3/5" />
@@ -132,11 +110,11 @@ export function ChatBubble({
       className
     )}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-primary to-accent flex-shrink-0">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 shadow-sm flex-shrink-0">
           {isSystem ? (
-            <Icon name="shield" size={16} className="text-white" />
+            <Icon name="shield" size={16} className="text-gray-600" />
           ) : (
-            <HanaNaviLogo size={20} className="text-white" />
+            <span className="text-lg">🤖</span>
           )}
         </div>
       )}
@@ -179,7 +157,7 @@ export function ChatBubble({
           )}
 
           <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert">
-            <div dangerouslySetInnerHTML={{ __html: mdToHtml(content) }} />
+            <ReactMarkdown>{content}</ReactMarkdown>
           </div>
           
           {/* Assistant message metadata */}

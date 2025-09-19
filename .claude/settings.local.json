@@ -6,7 +6,10 @@
       "Bash(git push:*)",
       "Bash(npm run dev:*)",
       "Bash(npm install)",
-      "Bash(pkill:*)"
+      "Bash(pkill:*)",
+      "Bash(npm install:*)",
+      "Read(//c/Users/user/Pictures/Screenshots/**)",
+      "Bash(npm run type-check:*)"
     ],
     "deny": [],
     "ask": []

@@ -6,7 +6,7 @@
   export default defineConfig(({ mode }) => {
     const env = loadEnv(mode, process.cwd(), '');
     const host = env.DEV_SERVER_HOST || '0.0.0.0';
-    const port = Number(env.DEV_SERVER_PORT || 3000);
+    const port = Number(env.DEV_SERVER_PORT || 18080);
     const allowed = (env.DEV_ALLOWED_HOSTS || 'localhost')
       .split(',')
       .map((s) => s.trim())

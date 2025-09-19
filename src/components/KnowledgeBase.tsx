@@ -691,11 +691,6 @@ function KnowledgeBase({
                                 <div className={`text-sm font-semibold ${scoreColor}`}>
                                   유사도: {scorePercentage}%
                                 </div>
-                                {score !== undefined && (
-                                  <div className="text-xs text-muted-foreground">
-                                    (정확값: {score.toFixed(4)})
-                                  </div>
-                                )}
                               </div>
                               <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                 <div

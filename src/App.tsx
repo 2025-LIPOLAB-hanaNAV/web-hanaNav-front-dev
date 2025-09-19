@@ -57,24 +57,33 @@ export default function App() {
   }, [initialSession, librarySelectedSession]);
 
   const handleSearch = (query: string, files?: File[]) => {
+    // 홈에서 검색할 때는 새 세션 생성 (기존 세션 초기화)
+    setInitialSession(undefined);
+    setLibrarySelectedSession(null);
     setSearchQuery(query);
     setSearchFiles(files || []);
     setCurrentView('chat');
-    console.log('Search:', query, files);
+    console.log('Search from home:', query, files);
   };
 
   const handleQuestionClick = (question: string) => {
+    // 홈에서 질문 클릭할 때도 새 세션 생성
+    setInitialSession(undefined);
+    setLibrarySelectedSession(null);
     setSearchQuery(question);
     setSearchFiles([]);
     setCurrentView('chat');
-    console.log('Question clicked:', question);
+    console.log('Question clicked from home:', question);
   };
 
   const handlePresetClick = (preset: any) => {
+    // 홈에서 프리셋 클릭할 때도 새 세션 생성
+    setInitialSession(undefined);
+    setLibrarySelectedSession(null);
     setSearchQuery(preset.title || preset.name || '');
     setSearchFiles([]);
     setCurrentView('chat');
-    console.log('Preset clicked:', preset);
+    console.log('Preset clicked from home:', preset);
   };
 
   const handleEvidenceClick = (evidence: EvidenceItem) => {
@@ -125,6 +134,9 @@ export default function App() {
             <div className="border-b md:border-b-0 md:border-r flex flex-col min-h-0">
               <ChatHistoryList
                 activeSessionKey={librarySelectedSession ? `${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}` : undefined}
+                onCreateNewSession={() => {
+                  // 새 세션 생성은 ChatHistoryList에서 처리하므로 여기서는 빈 함수
+                }}
                 onOpenSession={(session) => {
                   const assistantId = (session as any).assistantId as string | undefined;
                   if (!assistantId) {

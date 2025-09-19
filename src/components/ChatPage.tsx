@@ -556,6 +556,20 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 
       const desiredName = query.slice(0, 80) || '새 대화';
       const ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
+
+      // 새 세션이고 메시지가 없으면 인사말 추가
+      const isNewSession = messages.length === 0 && (!sessionId || sessionId !== ensuredSessionId);
+      if (isNewSession) {
+        const greetingMessage: ChatMessage = {
+          id: `greeting_${Date.now()}`,
+          type: 'assistant',
+          content: `안녕하세요! 하나 내비입니다. 🌟\n\n무엇을 도와드릴까요? 궁금한 것이 있으시면 언제든 말씀해 주세요.`,
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          state: 'success'
+        };
+        setMessages(prev => [...prev, greetingMessage]);
+      }
+
       const t0 = Date.now();
 
       let latestAnswer = '';
@@ -775,6 +789,103 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     }
   };
 
+  const handleModeChange = async (newMode: string) => {
+    if (newMode === currentMode) return;
+
+    // 기존 대화가 있는 경우에만 복사
+    if (messages.length > 0) {
+      const shouldCopy = window.confirm('모델을 변경하면 새 세션이 시작됩니다. 기존 대화를 복사하시겠습니까?');
+
+      if (shouldCopy) {
+        try {
+          // 새로운 어시스턴트 ID 가져오기
+          const newAssistantId = defaultAssistantByMode[newMode];
+          if (!newAssistantId) {
+            alert('선택한 모델의 어시스턴트를 찾을 수 없습니다.');
+            return;
+          }
+
+          // 새 세션 생성
+          const sessionName = `${chatModes.find(m => m.id === newMode)?.name} 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+          const newSession = await createChatSession(newAssistantId, { name: sessionName });
+
+          // 기존 메시지를 새 세션용으로 변환 (인사말 제거)
+          const copiedMessages = messages
+            .filter(msg => msg.type !== 'system') // 시스템 메시지 제거
+            .map((msg, index) => ({
+              ...msg,
+              id: `${newSession.id}_msg_${index}`,
+              timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
+            }));
+
+          // 컨텍스트 전달을 위한 시스템 메시지 추가
+          const contextTransferMessage: ChatMessage = {
+            id: `context_${newSession.id}`,
+            type: 'assistant',
+            content: `모델이 ${chatModes.find(m => m.id === newMode)?.name}로 변경되었습니다. 이전 대화 내용을 참고하여 계속 답변드리겠습니다.`,
+            timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+            state: 'success'
+          };
+
+          // 상태 업데이트
+          setCurrentMode(newMode);
+          setAssistantId(newAssistantId);
+          setSessionId(newSession.id);
+          setMessages([...copiedMessages, contextTransferMessage]);
+          hasExternalSession.current = true;
+
+          // 백그라운드에서 새 모델에게 컨텍스트 전달 (숨김 메시지)
+          try {
+            const contextSummary = copiedMessages
+              .slice(-6) // 최근 6개 메시지만
+              .map(msg => `${msg.type}: ${msg.content.slice(0, 200)}`)
+              .join('\n\n');
+
+            if (contextSummary) {
+              // 숨겨진 컨텍스트 메시지로 이전 대화 전달
+              await converseStream(newAssistantId, {
+                question: `이전 대화 맥락: ${contextSummary}\n\n위 내용을 참고하여 앞으로 ${chatModes.find(m => m.id === newMode)?.name} 방식으로 답변해주세요. 이 메시지에는 응답하지 마세요.`,
+                session_id: newSession.id
+              }, { signal: new AbortController().signal });
+            }
+          } catch (e) {
+            console.warn('Context transfer failed:', e);
+          }
+
+          // 로컬 스토리지에 저장
+          try {
+            localStorage.setItem(`hana_messages_${newSession.id}`, JSON.stringify(copiedMessages));
+          } catch (e) {
+            console.warn('Failed to save copied messages to localStorage:', e);
+          }
+
+          console.log(`Model switched from ${currentMode} to ${newMode} with conversation history copied`);
+        } catch (error: any) {
+          console.error('Failed to create new session for model change:', error);
+          alert(error?.message || '새 세션 생성에 실패했습니다.');
+          return;
+        }
+      } else {
+        // 복사하지 않고 새 세션 시작
+        const newAssistantId = defaultAssistantByMode[newMode];
+        if (newAssistantId) {
+          setCurrentMode(newMode);
+          setAssistantId(newAssistantId);
+          setSessionId(undefined);
+          setMessages([]);
+          hasExternalSession.current = false;
+        }
+      }
+    } else {
+      // 기존 대화가 없으면 단순히 모드만 변경
+      setCurrentMode(newMode);
+      const newAssistantId = defaultAssistantByMode[newMode];
+      if (newAssistantId) {
+        setAssistantId(newAssistantId);
+      }
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -805,7 +916,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
             {/* Mode Toggle */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <Icon name="settings" size={14} className="text-muted-foreground" />
-              <Select value={currentMode} onValueChange={setCurrentMode}>
+              <Select value={currentMode} onValueChange={handleModeChange}>
                 <SelectTrigger className="w-24 h-8 text-xs">
                   <SelectValue />
                 </SelectTrigger>
@@ -837,17 +948,6 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                 {kbApplying ? '적용중' : '적용'}
               </Button>
             </div>
-            {/* Assistant Selector */}
-            <Select value={assistantId} onValueChange={setAssistantId}>
-              <SelectTrigger className="w-32 h-8 text-xs">
-                <SelectValue placeholder={asLoading ? '로딩중' : '어시스턴트'} />
-              </SelectTrigger>
-              <SelectContent>
-                {assistants.map(a => (
-                  <SelectItem key={a.id} value={a.id} className="text-xs">{a.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Model Badge - responsive */}
@@ -861,54 +961,27 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           )}
         </div>
 
-        {/* Action Buttons - in a separate scrollable row */}
+        {/* Action Buttons - simplified for current session only */}
         <div className="px-3 pb-3 border-b border-border/50">
           <div className="flex items-center gap-2 overflow-x-auto">
             <Button
               variant="outline"
               size="sm"
-              className="h-8 text-xs px-2 flex-shrink-0"
-              onClick={async () => {
-                  const activeAssistantId = assistantId || defaultAssistantByMode[currentMode];
-                  if (!activeAssistantId) {
-                    alert('어시스턴트를 먼저 선택하세요.');
-                    return;
-                  }
-                  setSessionCreating(true);
-                  try {
-                    const name = `새 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
-                    const created = await createChatSession(activeAssistantId, { name });
-                    setSessionId(created.id);
-                    setMessages([]);
-                    hasExternalSession.current = true;
-                    try { localStorage.removeItem(`hana_messages_${created.id}`); } catch {}
-                  } catch (err: any) {
-                    alert(err?.message || '새 세션 생성에 실패했습니다.');
-                  } finally {
-                    setSessionCreating(false);
-                  }
-                }}
-                disabled={sessionCreating}
-              >
-                {sessionCreating ? '생성중...' : '새 세션'}
+              className="h-8 text-xs px-2 flex-shrink-0 text-muted-foreground"
+              onClick={handleContextRollback}
+              disabled={messages.length < 2}
+            >
+              <Icon name="arrow-left" size={14} />
+              되돌리기
+            </Button>
+            {assistantId && sessionId && (
+              <Button variant="destructive" size="sm" className="h-8 text-xs px-2 flex-shrink-0" onClick={handleDeleteSession}>
+                <Icon name="trash-2" size={14} />
+                세션 삭제
               </Button>
-              {assistantId && sessionId && (
-                <Button variant="destructive" size="sm" className="h-8 text-xs px-2 flex-shrink-0" onClick={handleDeleteSession}>
-                  세션 삭제
-                </Button>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                className="h-8 text-xs px-2 flex-shrink-0 text-muted-foreground"
-                onClick={handleContextRollback}
-                disabled={messages.length < 2}
-              >
-                <Icon name="arrow-right" size={14} />
-                되돌리기
-              </Button>
-            </div>
+            )}
           </div>
+        </div>
 
         {/* Knowledge Base Dialog */}
         <Dialog open={isKBOpen} onOpenChange={setIsKBOpen}>

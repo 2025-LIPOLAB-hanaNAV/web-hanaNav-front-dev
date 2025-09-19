@@ -9,7 +9,7 @@ import { cn } from './ui/utils';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from './ui/dialog';
 import { Clock, MessageSquareText, Star } from 'lucide-react';
-import { listChats, listChatSessions, deleteChatSessions, updateChatSession } from '../services/ragflow';
+import { listChats, listChatSessions, deleteChatSessions, updateChatSession, createChatSession } from '../services/ragflow';
 import { RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 
 type ChatSession = {
@@ -26,6 +26,7 @@ type ChatSession = {
 type Props = {
   onOpenSession?: (session: ChatSession) => void;
   activeSessionKey?: string;
+  onCreateNewSession?: () => void;
 };
 
 function timeAgo(iso: string): string {
@@ -40,7 +41,7 @@ function timeAgo(iso: string): string {
   return '방금 전';
 }
 
-export function ChatHistoryList({ onOpenSession, activeSessionKey }: Props) {
+export function ChatHistoryList({ onOpenSession, activeSessionKey, onCreateNewSession }: Props) {
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -54,6 +55,7 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey }: Props) {
   const [renameValue, setRenameValue] = useState('');
   const [renameLoading, setRenameLoading] = useState(false);
   const [renameError, setRenameError] = useState<string | null>(null);
+  const [creatingSession, setCreatingSession] = useState(false);
 
   const sessionKey = (session: ChatSession) => `${session.assistantId || 'unknown'}:${session.id}`;
 
@@ -291,17 +293,66 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey }: Props) {
     }
   };
 
+  const handleCreateNewSession = async () => {
+    if (!RAGFLOW_ASSISTANT_QUICK_ID) {
+      setError('빠른답 모델이 설정되지 않았습니다.');
+      return;
+    }
+
+    setError(null);
+    setCreatingSession(true);
+    try {
+      const sessionName = `새 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+      const newSession = await createChatSession(RAGFLOW_ASSISTANT_QUICK_ID, { name: sessionName });
+
+      // 새 세션을 목록에 추가
+      const newChatSession: ChatSession = {
+        id: newSession.id,
+        title: sessionName,
+        preview: '',
+        messageCount: 0,
+        updatedAt: new Date().toISOString(),
+        assistantId: RAGFLOW_ASSISTANT_QUICK_ID,
+        messages: []
+      };
+
+      setSessions(prev => [newChatSession, ...prev]);
+
+      // 새 세션 열기
+      onOpenSession?.(newChatSession);
+
+      console.log('새 빠른답 세션 생성:', newSession);
+    } catch (error: any) {
+      console.error('새 세션 생성 실패:', error);
+      setError(error?.message || '새 세션 생성에 실패했습니다.');
+    } finally {
+      setCreatingSession(false);
+    }
+  };
+
   return (
     <div className="flex h-full min-h-0 flex-col overflow-hidden font-sans">
       {/* Header */}
       <div className="flex-shrink-0 border-b p-4">
         <div className="flex flex-col gap-4 mb-4">
-          <div className="flex items-center gap-3">
-            <HanaNaviLogo size={32} className="opacity-80 flex-shrink-0" />
-            <div>
-              <h1 className="text-xl font-medium">라이브러리</h1>
-              <p className="text-muted-foreground text-sm">채팅 기록 {visible.length}개</p>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <HanaNaviLogo size={32} className="opacity-80 flex-shrink-0" />
+              <div>
+                <h1 className="text-xl font-medium">라이브러리</h1>
+                <p className="text-muted-foreground text-sm">채팅 기록 {visible.length}개</p>
+              </div>
             </div>
+            <Button
+              variant="default"
+              size="sm"
+              onClick={handleCreateNewSession}
+              disabled={creatingSession || loading}
+              className="gap-1 h-8 px-3"
+            >
+              <Icon name="plus" size={16} />
+              <span className="hidden sm:inline">{creatingSession ? '생성중...' : '새 대화'}</span>
+            </Button>
           </div>
 
           <div className="flex flex-col gap-3">

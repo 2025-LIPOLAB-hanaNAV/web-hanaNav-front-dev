@@ -432,40 +432,54 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     try {
       if (isEphemeral) {
         const ids = ephemeralDatasetId ? [ephemeralDatasetId, ...selectedKBs] : [...selectedKBs];
-        // 지식베이스와 함께 프롬프트도 자동 업데이트
+        // 지식베이스만 업데이트 (프롬프트는 유지)
         await updateChat(activeAssistantId, {
-          dataset_ids: ids,
-          prompt: ids.length > 0 ? {
-            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
-            quote: true,
-            keyword: false,
-            parameters: [
-              { key: "knowledge", optional: false, type: "string" }
-            ]
-          } : {
-            system: "You are a helpful AI assistant. Please provide accurate and helpful responses.",
-            quote: false,
-            keyword: false,
-            parameters: []
-          }
+          dataset_ids: ids
         });
       } else {
-        // 일반 어시스턴트도 프롬프트 자동 업데이트
+        // 일반 어시스턴트는 지식베이스와 프롬프트를 동적으로 변경
+        const promptConfig = selectedKBs.length === 0 ? {
+          // 일반 대화용 프롬프트 (knowledge 변수 없음)
+          prompt: `당신은 "빠른별돌이"라는 이름의 친근한 AI 어시스턴트입니다 🌟
+
+빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
+사용자와 자연스럽고 친근한 대화를 나누며, 질문에 대해 가능한 한 빠르고 간결하게 답변합니다.
+
+기본 원칙:
+- 인사나 일상 대화에는 자연스럽고 친근하게 응답
+- 업무 질문에는 정확하고 간결하게 답변
+- 모르는 내용은 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하기
+- 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성
+
+🌟 무엇을 도와드릴까요?`,
+          opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?",
+          empty_response: "",
+          show_quote: false,
+          variables: []
+        } : {
+          // RAG용 프롬프트 (knowledge 변수 포함)
+          prompt: `당신은 "빠른별돌이"라는 이름의 챗봇입니다 🌙
+빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
+
+지식베이스 활용 규칙:
+1. 아래 {knowledge}는 지식베이스에서 검색된 문서 조각입니다.
+2. 질문이 지식베이스와 관련 있을 때만 {knowledge}를 참고하세요.
+3. {knowledge}를 사용할 경우, 반드시 답변 안에 출처를 포함해야 합니다.
+4. {knowledge}가 비어 있거나 관련성이 낮으면, 무시하고 일반 지식이나 기본 대화로 답하세요.
+5. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
+
+지식베이스 내용:
+{knowledge}
+(위 내용은 필요할 때만 참고하세요 🌟)`,
+          opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요.",
+          empty_response: "",
+          show_quote: true,
+          variables: [{ key: "knowledge", optional: true }]
+        };
+
         await updateChat(activeAssistantId, {
           dataset_ids: selectedKBs,
-          prompt: selectedKBs.length > 0 ? {
-            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
-            quote: true,
-            keyword: false,
-            parameters: [
-              { key: "knowledge", optional: false, type: "string" }
-            ]
-          } : {
-            system: "You are a helpful AI assistant. Please provide accurate and helpful responses.",
-            quote: false,
-            keyword: false,
-            parameters: []
-          }
+          prompt: promptConfig
         });
       }
       setKbToast(selectedKBs.length === 0 ? '지식베이스 연결이 해제되었습니다.' : `${selectedKBs.length}개 지식베이스가 연결되어 자동으로 설정되었습니다.`);
@@ -593,7 +607,15 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 
       const result = await converseStream(
         activeAssistantId,
-        { question: query, session_id: ensuredSessionId },
+        {
+          question: query,
+          session_id: ensuredSessionId,
+          // 지식베이스가 선택되지 않았으면 검색 비활성화
+          ...(selectedKBs.length === 0 && {
+            temperature: 0.3,
+            top_k: 0
+          })
+        },
         {
           signal: streamController.signal,
           onMessage: (partial) => {
@@ -711,19 +733,27 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   // Process initial query when component mounts
   useEffect(() => {
     if (initialQuery && initialQuery.trim()) {
+      // 홈에서 온 검색은 새 세션으로 시작
+      if (!initialSession) {
+        setSessionId(undefined);  // 기존 세션 초기화
+        hasExternalSession.current = false;
+      }
       handleSearch(initialQuery, initialFiles);
       onQueryProcessed?.();
     }
-  }, [initialQuery, initialFiles]);
+  }, [initialQuery, initialFiles, initialSession]);
 
   const handleRetry = () => {
     // Implement retry logic
   };
 
   const toggleKB = (id: string) => {
-    setSelectedKBs(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+    setSelectedKBs(prev => {
+      const newKBs = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      // 자동 적용 (선택사항)
+      // setTimeout(() => applySelectedKnowledgeBases(), 500);
+      return newKBs;
+    });
   };
 
   // Load datasets into picker
@@ -818,39 +848,12 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
               timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })
             }));
 
-          // 컨텍스트 전달을 위한 시스템 메시지 추가
-          const contextTransferMessage: ChatMessage = {
-            id: `context_${newSession.id}`,
-            type: 'assistant',
-            content: `모델이 ${chatModes.find(m => m.id === newMode)?.name}로 변경되었습니다. 이전 대화 내용을 참고하여 계속 답변드리겠습니다.`,
-            timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-            state: 'success'
-          };
-
           // 상태 업데이트
           setCurrentMode(newMode);
           setAssistantId(newAssistantId);
           setSessionId(newSession.id);
-          setMessages([...copiedMessages, contextTransferMessage]);
+          setMessages(copiedMessages);
           hasExternalSession.current = true;
-
-          // 백그라운드에서 새 모델에게 컨텍스트 전달 (숨김 메시지)
-          try {
-            const contextSummary = copiedMessages
-              .slice(-6) // 최근 6개 메시지만
-              .map(msg => `${msg.type}: ${msg.content.slice(0, 200)}`)
-              .join('\n\n');
-
-            if (contextSummary) {
-              // 숨겨진 컨텍스트 메시지로 이전 대화 전달
-              await converseStream(newAssistantId, {
-                question: `이전 대화 맥락: ${contextSummary}\n\n위 내용을 참고하여 앞으로 ${chatModes.find(m => m.id === newMode)?.name} 방식으로 답변해주세요. 이 메시지에는 응답하지 마세요.`,
-                session_id: newSession.id
-              }, { signal: new AbortController().signal });
-            }
-          } catch (e) {
-            console.warn('Context transfer failed:', e);
-          }
 
           // 로컬 스토리지에 저장
           try {

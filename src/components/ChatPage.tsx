@@ -1,10 +1,10 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, memo } from 'react';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, getChatSession, type ChatAssistant, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
+import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
 import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
@@ -69,6 +69,26 @@ interface ChatPagePropsExtended extends ChatPageProps {
   initialSession?: InitialSession;
 }
 
+// 간단한 모델 배지 컴포넌트
+const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: {
+  assistantId: string;
+  assistants: ChatAssistant[];
+  currentMode: string;
+  modelByMode: Record<string, string>;
+}) => {
+  // 현재 모드에 따른 모델명 가져오기
+  const currentModelName = modelByMode[currentMode] || 'gemma3:12b';
+
+  return (
+    <div className="flex-shrink-0">
+      <Badge variant="secondary" className="text-xs px-2 py-1">
+        <span className="hidden md:inline">모델: </span>
+        Ollama@{currentModelName}
+      </Badge>
+    </div>
+  );
+});
+
 export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -95,52 +115,53 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const hasExternalSession = useRef(false);
+  const activeStreamController = useRef<AbortController | null>(null);
 
   // Initialize session from props and load previous messages
   useEffect(() => {
-    if (initialSession?.assistantId) {
-      hasExternalSession.current = true;
-      setAssistantId(initialSession.assistantId);
-    }
-    if (initialSession?.sessionId) {
-      if (initialSession.sessionId !== sessionId) {
+    if (initialSession?.assistantId && initialSession?.sessionId) {
+      const currentKey = `${assistantId}:${sessionId}`;
+      const newKey = `${initialSession.assistantId}:${initialSession.sessionId}`;
+      const needsUpdate = currentKey !== newKey;
+
+      if (needsUpdate) {
+        console.log('Loading new session:', initialSession);
         hasExternalSession.current = true;
-        setMessages([]);
+
+        // 먼저 상태 업데이트
+        setAssistantId(initialSession.assistantId);
         setSessionId(initialSession.sessionId);
-        // 기존 세션 대화 내용 로드
-        loadSessionMessages(initialSession.assistantId!, initialSession.sessionId);
+
+        // 메시지가 전달되었으면 직접 사용
+        if (initialSession.messages && initialSession.messages.length > 0) {
+          const convertedMessages = initialSession.messages
+            .filter(msg => (msg.content || '').trim().length > 0)
+            .map((msg, index) => ({
+              id: `${initialSession.sessionId}_msg_${index}`,
+              type: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
+              content: msg.content || '',
+              timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+              state: 'success' as const
+            }));
+
+          console.log('Loading messages from session data:', convertedMessages);
+          setMessages(convertedMessages);
+
+          // 로컬 스토리지에도 저장
+          try {
+            localStorage.setItem(`hana_messages_${initialSession.sessionId}`, JSON.stringify(convertedMessages));
+          } catch (e) {
+            console.warn('Failed to save messages to localStorage:', e);
+          }
+        } else {
+          console.log('No messages in session data, setting empty array');
+          setMessages([]);
+        }
       }
     }
-  }, [initialSession?.assistantId, initialSession?.sessionId, sessionId]);
+  }, [initialSession?.assistantId, initialSession?.sessionId, initialSession?.messages]);
 
-  // 세션 대화 내용 로드 함수
-  const loadSessionMessages = async (assistantId: string, sessionId: string) => {
-    try {
-      // 먼저 로컬 스토리지에서 메시지 복원 시도
-      const savedMessages = localStorage.getItem(`hana_messages_${sessionId}`);
-      if (savedMessages) {
-        const parsedMessages = JSON.parse(savedMessages);
-        setMessages(parsedMessages);
-        return;
-      }
 
-      // 로컬에 없으면 서버에서 세션 정보 가져오기
-      const session = await getChatSession(assistantId, sessionId);
-      if (session.messages && session.messages.length > 0) {
-        const convertedMessages = session.messages.map((msg, index) => ({
-          id: `msg_${index}`,
-          type: msg.role as 'user' | 'assistant',
-          content: msg.content,
-          timestamp: new Date().toISOString(),
-          state: 'success' as const
-        }));
-        setMessages(convertedMessages);
-      }
-    } catch (error) {
-      // Silently ignore session loading errors for now
-      // console.warn('Failed to load session messages:', error);
-    }
-  };
 
   // Restore persisted session when no explicit target was provided
   useEffect(() => {
@@ -188,6 +209,12 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     };
   }, [sessionId]);
 
+  useEffect(() => {
+    return () => {
+      activeStreamController.current?.abort();
+    };
+  }, []);
+
   // Restore cached messages for session
   useEffect(() => {
     if (!sessionId) return;
@@ -202,31 +229,6 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     } catch {}
   }, [sessionId]);
 
-  // Fetch server-side messages for selected session (override cache)
-  useEffect(() => {
-    if (!assistantId || !sessionId) return;
-    let active = true;
-    (async () => {
-      try {
-        const s = await getChatSession(assistantId, sessionId);
-        const msgs = (s.messages || []).filter(m => (m.content || '').trim().length > 0);
-        if (!active) return;
-        if (msgs.length > 0) {
-          const mapped: ChatMessage[] = msgs.map((m, idx) => ({
-            id: `${sessionId}-${idx}`,
-            type: m.role === 'assistant' ? 'assistant' : 'user',
-            content: m.content,
-            timestamp: '',
-          }));
-          setMessages(mapped);
-        }
-      } catch (e) {
-        // Silently ignore getChatSession errors for now
-        // console.warn('[Chat] getChatSession failed:', (e as any)?.message || e);
-      }
-    })();
-    return () => { active = false; };
-  }, [assistantId, sessionId]);
 
   // Ephemeral context: ensure assistant/dataset for attachments
   const ensureEphemeralContext = async (files?: File[]): Promise<string | undefined> => {
@@ -480,13 +482,17 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   const handleSearch = async (query: string, files?: File[]) => {
     if (!query.trim()) return;
 
+    activeStreamController.current?.abort();
+    const streamController = new AbortController();
+    activeStreamController.current = streamController;
+
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       type: 'user',
       content: query,
-      timestamp: new Date().toLocaleTimeString('ko-KR', { 
-        hour: '2-digit', 
-        minute: '2-digit' 
+      timestamp: new Date().toLocaleTimeString('ko-KR', {
+        hour: '2-digit',
+        minute: '2-digit'
       })
     };
 
@@ -494,34 +500,120 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     setIsLoading(true);
     console.log('Query submitted with KBs:', selectedKBs, 'assistant:', assistantId, 'files:', files?.map(f => f.name));
 
-    // Add loading message
+    const loadingMessageId = `assistant_${Date.now() + 1}`;
     const loadingMessage: ChatMessage = {
-      id: (Date.now() + 1).toString(),
+      id: loadingMessageId,
       type: 'assistant',
       content: '',
       timestamp: '',
       state: 'loading'
     };
-    
+
     setMessages(prev => [...prev, loadingMessage]);
+
+    const preprocessMarkdownText = (text: string): string => {
+      let cleaned = text.replace(/\[ID:\d+\]/g, '');
+
+      cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
+        const index = parseInt(num);
+        return `[${index + 1}]`;
+      });
+
+      const boldTextMap = new Map<string, string>();
+      let boldCounter = 0;
+      cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
+        const placeholder = `__BOLD_${boldCounter++}__`;
+        boldTextMap.set(placeholder, match);
+        return placeholder;
+      });
+
+      cleaned = cleaned.replace(/\.\s/g, '.   ');
+      cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])(\|[^|]*\|)/g, '$1\n$2');
+      cleaned = cleaned.replace(/(\|[^|]*\|)([^\n|])/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])([-*_]{3,})/g, '$1\n$2');
+      cleaned = cleaned.replace(/([-*_]{3,})([^\n])/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])([-*+]\s)/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])(```)/g, '$1\n$2');
+      cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
+      cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
+
+      boldTextMap.forEach((original, placeholder) => {
+        cleaned = cleaned.replace(placeholder, original);
+      });
+
+      cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+      cleaned = cleaned.trim();
+
+      return cleaned;
+    };
 
     try {
       const ephemeralId = await ensureEphemeralContext(files);
       const activeAssistantId = ephemeralId || assistantId || defaultAssistantByMode[currentMode];
       if (!activeAssistantId) throw new Error('어시스턴트를 선택하거나 기본 ID를 설정하세요.');
-      // Avoid mutating shared assistants here; ephemeral assistant already updated in ensureEphemeralContext
+
       const desiredName = query.slice(0, 80) || '새 대화';
       const ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
       const t0 = Date.now();
-      const result = await converseOnce(activeAssistantId, { question: query, session_id: ensuredSessionId });
+
+      let latestAnswer = '';
+      let latestReference: any = undefined;
+      let latestSessionId: string | undefined;
+      let lastRendered = '';
+
+      const updateAssistantContent = (raw?: string) => {
+        if (typeof raw !== 'string') return;
+        const processed = preprocessMarkdownText(raw);
+        if (processed === lastRendered) return;
+        lastRendered = processed;
+        setMessages(prev =>
+          prev.map(msg =>
+            msg.id === loadingMessageId
+              ? { ...msg, content: processed, state: 'success' }
+              : msg
+          )
+        );
+      };
+
+      const result = await converseStream(
+        activeAssistantId,
+        { question: query, session_id: ensuredSessionId },
+        {
+          signal: streamController.signal,
+          onMessage: (partial) => {
+            if (partial.answer !== undefined) {
+              latestAnswer = partial.answer || '';
+              updateAssistantContent(latestAnswer);
+            } else if (latestAnswer) {
+              updateAssistantContent(latestAnswer);
+            }
+
+            if (partial.reference !== undefined) {
+              latestReference = partial.reference;
+            }
+
+            if (partial.session_id) {
+              latestSessionId = partial.session_id;
+            }
+          }
+        }
+      );
+
       const dt = (Date.now() - t0) / 1000;
-      if (result.session_id && !sessionId) {
-        setSessionId(result.session_id);
+      const effectiveAnswer = result.answer ?? latestAnswer;
+      const effectiveReference = result.reference ?? latestReference;
+      const effectiveSessionId = result.session_id ?? latestSessionId;
+
+      if (effectiveSessionId && !sessionId) {
+        setSessionId(effectiveSessionId);
         const name = query.slice(0, 80);
-        try { await updateChatSession(activeAssistantId, result.session_id, { name }); } catch {}
+        try { await updateChatSession(activeAssistantId, effectiveSessionId, { name }); } catch {}
       }
-      const evidenceCount = result.reference?.chunks?.length || result.reference?.total || 0;
-      const sources: SourceReference[] = result.reference?.chunks?.map((chunk: any, index: number) => ({
+
+      const evidenceCount = effectiveReference?.chunks?.length || effectiveReference?.total || 0;
+      const sources: SourceReference[] = effectiveReference?.chunks?.map((chunk: any, index: number) => ({
         id: `source_${index}`,
         title: chunk.document_name || chunk.doc_name || `문서 ${index + 1}`,
         content: chunk.content_with_weight || chunk.content || '',
@@ -532,96 +624,48 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       })) || [];
 
       console.log('RAG Response Debug:', {
-        reference: result.reference,
-        chunks: result.reference?.chunks,
+        reference: effectiveReference,
+        chunks: effectiveReference?.chunks,
         sources: sources
       });
 
-      // Remove ID references, convert indices, and preprocess for better markdown formatting
-      const preprocessMarkdownText = (text: string): string => {
-        // Remove [ID:0], [ID:1] etc.
-        let cleaned = text.replace(/\[ID:\d+\]/g, '');
+      const finalContent = preprocessMarkdownText(effectiveAnswer || '응답이 비어 있습니다.');
 
-        // Convert [0], [1], [2] to [1], [2], [3]
-        cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
-          const index = parseInt(num);
-          return `[${index + 1}]`;
-        });
-
-        // Temporarily replace bold text to protect it from other processing
-        const boldTextMap = new Map<string, string>();
-        let boldCounter = 0;
-        cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
-          const placeholder = `__BOLD_${boldCounter++}__`;
-          boldTextMap.set(placeholder, match);
-          return placeholder;
-        });
-
-        // 1. Add three spaces after periods for markdown line breaks
-        cleaned = cleaned.replace(/\.\s/g, '.   ');
-
-        // 2. Add line breaks before headers (#, ##, ###, etc.)
-        cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
-
-        // 3. Add line breaks before numbered lists (1., 2., 3., etc.)
-        cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
-
-        // 4. Add line breaks around table formats
-        // Before table rows starting with |
-        cleaned = cleaned.replace(/([^\n])(\|[^|]*\|)/g, '$1\n$2');
-        // After table rows ending with |
-        cleaned = cleaned.replace(/(\|[^|]*\|)([^\n|])/g, '$1\n$2');
-        // Add line breaks around horizontal rules (---, ***, ___)
-        cleaned = cleaned.replace(/([^\n])([-*_]{3,})/g, '$1\n$2');
-        cleaned = cleaned.replace(/([-*_]{3,})([^\n])/g, '$1\n$2');
-
-        // 5. Additional markdown preprocessing improvements
-        // Add line breaks before unordered lists (-, *, +)
-        cleaned = cleaned.replace(/([^\n])([-*+]\s)/g, '$1\n$2');
-        // Add line breaks before code blocks (```)
-        cleaned = cleaned.replace(/([^\n])(```)/g, '$1\n$2');
-        cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
-        // Add line breaks before blockquotes (>)
-        cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
-
-        // Restore bold text
-        boldTextMap.forEach((original, placeholder) => {
-          cleaned = cleaned.replace(placeholder, original);
-        });
-
-        // Clean up excessive line breaks (more than 2 consecutive)
-        cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
-
-        // Trim whitespace
-        cleaned = cleaned.trim();
-
-        return cleaned;
-      };
-
-      const assistantMessage: ChatMessage = {
-        id: (Date.now() + 2).toString(),
-        type: 'assistant',
-        content: preprocessMarkdownText(result.answer || '응답이 비어 있습니다.'),
-        timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-        state: 'success',
-        evidenceCount: Number(evidenceCount) || undefined,
-        responseTime: dt,
-        hasPII: false,
-        isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0),
-        sources: sources.length > 0 ? sources : undefined
-      };
-      setMessages(prev => prev.slice(0, -1).concat(assistantMessage));
+      setMessages(prev =>
+        prev.map(msg =>
+          msg.id === loadingMessageId
+            ? {
+                ...msg,
+                content: finalContent,
+                timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+                state: 'success',
+                evidenceCount: Number(evidenceCount) || undefined,
+                responseTime: dt,
+                hasPII: false,
+                isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0),
+                sources: sources.length > 0 ? sources : undefined
+              }
+            : msg
+        )
+      );
     } catch (err: any) {
-      const errorMessage: ChatMessage = {
-        id: (Date.now() + 2).toString(),
-        type: 'assistant',
-        content: err?.message || '요청에 실패했습니다.',
-        timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-        state: 'warning'
-      };
-      setMessages(prev => prev.slice(0, -1).concat(errorMessage));
+      if (err?.name === 'AbortError') {
+        setMessages(prev => prev.filter(msg => msg.id !== loadingMessageId));
+      } else {
+        const errorMessage: ChatMessage = {
+          id: (Date.now() + 2).toString(),
+          type: 'assistant',
+          content: err?.message || '요청에 실패했습니다.',
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          state: 'warning'
+        };
+        setMessages(prev => prev.filter(msg => msg.id !== loadingMessageId).concat(errorMessage));
+      }
     } finally {
       setIsLoading(false);
+      if (activeStreamController.current === streamController) {
+        activeStreamController.current = null;
+      }
     }
   };
 
@@ -695,10 +739,13 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     setAsLoading(true);
     listChats({ page: 1, page_size: 100, orderby: 'update_time', desc: true })
       .then(items => {
+        console.log('RAGFlow listChats response:', items);
         // merge defaults if not present
         const byId = new Map(items.map(a => [a.id, a] as const));
         defaultAssistants.forEach(d => { if (!byId.has(d.id)) byId.set(d.id, d); });
-        setAssistants(Array.from(byId.values()));
+        const finalAssistants = Array.from(byId.values());
+        console.log('Final assistants list:', finalAssistants);
+        setAssistants(finalAssistants);
       })
       .catch(err => {
         console.warn('[AS] listChats failed:', err?.message || err);
@@ -752,143 +799,155 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       {/* Quality Dashboard removed by request */}
 
       {/* Chat Controls (filters removed; KB chooser added) */}
-      <div className="flex items-center justify-between p-4 border-b bg-elevated">
-        <div className="flex items-center gap-4">
-          {/* Mode Toggle */}
-          <div className="flex items-center gap-2">
-            <Icon name="settings" size={16} className="text-muted-foreground" />
-            <Select value={currentMode} onValueChange={setCurrentMode}>
-              <SelectTrigger className="w-32">
-                <SelectValue />
+      <div className="border-b bg-elevated">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3">
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+            {/* Mode Toggle */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Icon name="settings" size={14} className="text-muted-foreground" />
+              <Select value={currentMode} onValueChange={setCurrentMode}>
+                <SelectTrigger className="w-24 h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {chatModes.map((mode) => {
+                    return (
+                      <SelectItem key={mode.id} value={mode.id}>
+                        <div className="flex items-center gap-2">
+                          <Icon name={mode.icon as any} size={14} />
+                          <span className="text-xs">{mode.name}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Knowledge Base Selector (Dialog) */}
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <Button variant="outline" size="sm" className="gap-1 h-8 text-xs px-2" onClick={() => setIsKBOpen(true)}>
+                <Icon name="book-open" size={14} />
+                <span className="hidden sm:inline">지식베이스</span>
+                {selectedKBs.length > 0 && (
+                  <Badge variant="secondary" className="ml-1 text-xs px-1">{selectedKBs.length}</Badge>
+                )}
+              </Button>
+              <Button variant="secondary" size="sm" className="h-8 text-xs px-2" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
+                {kbApplying ? '적용중' : '적용'}
+              </Button>
+            </div>
+            {/* Assistant Selector */}
+            <Select value={assistantId} onValueChange={setAssistantId}>
+              <SelectTrigger className="w-32 h-8 text-xs">
+                <SelectValue placeholder={asLoading ? '로딩중' : '어시스턴트'} />
               </SelectTrigger>
               <SelectContent>
-                {chatModes.map((mode) => {
-                  return (
-                    <SelectItem key={mode.id} value={mode.id}>
-                      <div className="flex items-center gap-2">
-                        <Icon name={mode.icon as any} size={16} />
-                        <span>{mode.name}</span>
-                      </div>
-                    </SelectItem>
-                  );
-                })}
+                {assistants.map(a => (
+                  <SelectItem key={a.id} value={a.id} className="text-xs">{a.name}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
 
-          {/* Knowledge Base Selector (Dialog) */}
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-2" onClick={() => setIsKBOpen(true)}>
-              <Icon name="book-open" size={16} />
-              지식베이스 선택
-              {selectedKBs.length > 0 && (
-                <Badge variant="secondary" className="ml-1">{selectedKBs.length}</Badge>
+          {/* Model Badge - responsive */}
+          {assistantId && (
+            <ModelBadge
+              assistantId={assistantId}
+              assistants={assistants}
+              currentMode={currentMode}
+              modelByMode={modelByMode}
+            />
+          )}
+        </div>
+
+        {/* Action Buttons - in a separate scrollable row */}
+        <div className="px-3 pb-3 border-b border-border/50">
+          <div className="flex items-center gap-2 overflow-x-auto">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-xs px-2 flex-shrink-0"
+              onClick={async () => {
+                  const activeAssistantId = assistantId || defaultAssistantByMode[currentMode];
+                  if (!activeAssistantId) {
+                    alert('어시스턴트를 먼저 선택하세요.');
+                    return;
+                  }
+                  setSessionCreating(true);
+                  try {
+                    const name = `새 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
+                    const created = await createChatSession(activeAssistantId, { name });
+                    setSessionId(created.id);
+                    setMessages([]);
+                    hasExternalSession.current = true;
+                    try { localStorage.removeItem(`hana_messages_${created.id}`); } catch {}
+                  } catch (err: any) {
+                    alert(err?.message || '새 세션 생성에 실패했습니다.');
+                  } finally {
+                    setSessionCreating(false);
+                  }
+                }}
+                disabled={sessionCreating}
+              >
+                {sessionCreating ? '생성중...' : '새 세션'}
+              </Button>
+              {assistantId && sessionId && (
+                <Button variant="destructive" size="sm" className="h-8 text-xs px-2 flex-shrink-0" onClick={handleDeleteSession}>
+                  세션 삭제
+                </Button>
               )}
-            </Button>
-            <Button variant="secondary" size="sm" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
-              {kbApplying ? '적용 중...' : '세션에 적용'}
-            </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 text-xs px-2 flex-shrink-0 text-muted-foreground"
+                onClick={handleContextRollback}
+                disabled={messages.length < 2}
+              >
+                <Icon name="arrow-right" size={14} />
+                되돌리기
+              </Button>
+            </div>
           </div>
-          <Dialog open={isKBOpen} onOpenChange={setIsKBOpen}>
-            <DialogContent className="max-w-lg">
-              <DialogHeader>
-                <DialogTitle>지식베이스 선택</DialogTitle>
-              </DialogHeader>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-muted-foreground">데이터셋 목록</span>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={reloadKBs} disabled={kbLoading}>새로고침</Button>
-                    <Button variant="ghost" size="sm" onClick={() => setSelectedKBs([])}>전체 해제</Button>
-                  </div>
-                </div>
-                {kbError && <div className="text-xs text-destructive">{kbError}</div>}
-                <div className="max-h-80 overflow-auto space-y-1">
-                  {kbLoading ? (
-                    <div className="text-sm text-muted-foreground">불러오는 중...</div>
-                  ) : knowledgeBases.length === 0 ? (
-                    <div className="text-sm text-muted-foreground">등록된 지식베이스가 없습니다.</div>
-                  ) : (
-                    knowledgeBases.map(kb => (
-                      <label key={kb.id} className="flex items-center gap-2 text-sm">
-                        <Checkbox checked={selectedKBs.includes(kb.id)} onCheckedChange={() => toggleKB(kb.id)} />
-                        <span className="truncate">{kb.name}</span>
-                      </label>
-                    ))
-                  )}
-                </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setIsKBOpen(false)}>닫기</Button>
-                  <Button onClick={() => { applySelectedKnowledgeBases(); setIsKBOpen(false); }} disabled={kbApplying}>
-                    {kbApplying ? '적용 중...' : '선택 적용'}
-                  </Button>
+
+        {/* Knowledge Base Dialog */}
+        <Dialog open={isKBOpen} onOpenChange={setIsKBOpen}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>지식베이스 선택</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">데이터셋 목록</span>
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={reloadKBs} disabled={kbLoading}>새로고침</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setSelectedKBs([])}>전체 해제</Button>
                 </div>
               </div>
-            </DialogContent>
-          </Dialog>
-
-          {/* Assistant Selector */}
-          <Select value={assistantId} onValueChange={setAssistantId}>
-            <SelectTrigger className="w-56">
-              <SelectValue placeholder={asLoading ? '불러오는 중...' : '어시스턴트 선택'} />
-            </SelectTrigger>
-            <SelectContent>
-              {assistants.map(a => (
-                <SelectItem key={a.id} value={a.id}>{a.name}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          {assistantId && (
-            <Badge variant="secondary" className="ml-1">모델: {assistants.find(a => a.id === assistantId)?.llm?.model_name || modelByMode[currentMode]}</Badge>
-          )}
-
-          {/* 파일 관리/데이터셋 생성은 지식베이스 탭으로 이동됨 */}
-        </div>
-
-      <div className="flex items-center gap-2">
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={async () => {
-              const activeAssistantId = assistantId || defaultAssistantByMode[currentMode];
-              if (!activeAssistantId) {
-                alert('어시스턴트를 먼저 선택하세요.');
-                return;
-              }
-              setSessionCreating(true);
-              try {
-                const name = `새 대화 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
-                const created = await createChatSession(activeAssistantId, { name });
-                setSessionId(created.id);
-                setMessages([]);
-                hasExternalSession.current = true;
-                try { localStorage.removeItem(`hana_messages_${created.id}`); } catch {}
-              } catch (err: any) {
-                alert(err?.message || '새 세션 생성에 실패했습니다.');
-              } finally {
-                setSessionCreating(false);
-              }
-            }}
-            disabled={sessionCreating}
-          >
-            {sessionCreating ? '세션 생성 중...' : '새 세션'}
-          </Button>
-          {assistantId && sessionId && (
-            <Button variant="destructive" size="sm" onClick={handleDeleteSession}>
-              세션 삭제
-            </Button>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleContextRollback}
-            disabled={messages.length < 2}
-            className="text-muted-foreground"
-          >
-            <Icon name="arrow-right" size={16} />
-            되돌리기
-          </Button>
-        </div>
+              {kbError && <div className="text-xs text-destructive">{kbError}</div>}
+              <div className="max-h-80 overflow-auto space-y-1">
+                {kbLoading ? (
+                  <div className="text-sm text-muted-foreground">불러오는 중...</div>
+                ) : knowledgeBases.length === 0 ? (
+                  <div className="text-sm text-muted-foreground">등록된 지식베이스가 없습니다.</div>
+                ) : (
+                  knowledgeBases.map(kb => (
+                    <label key={kb.id} className="flex items-center gap-2 text-sm">
+                      <Checkbox checked={selectedKBs.includes(kb.id)} onCheckedChange={() => toggleKB(kb.id)} />
+                      <span className="truncate">{kb.name}</span>
+                    </label>
+                  ))
+                )}
+              </div>
+              <div className="flex justify-end gap-2 pt-2">
+                <Button variant="outline" onClick={() => setIsKBOpen(false)}>닫기</Button>
+                <Button onClick={() => { applySelectedKnowledgeBases(); setIsKBOpen(false); }} disabled={kbApplying}>
+                  {kbApplying ? '적용 중...' : '선택 적용'}
+                </Button>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
       </div>
 
       {kbToast && (

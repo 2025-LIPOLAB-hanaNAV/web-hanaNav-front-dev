@@ -36,8 +36,8 @@ export default function App() {
   const [showEvidencePanel, setShowEvidencePanel] = useState(false);
   const [searchQuery, setSearchQuery] = useState<string>('');
   const [searchFiles, setSearchFiles] = useState<File[]>([]);
-  const [initialSession, setInitialSession] = useState<{ assistantId: string; sessionId: string } | undefined>(undefined);
-  const [librarySelectedSession, setLibrarySelectedSession] = useState<{ assistantId: string; sessionId: string } | null>(null);
+  const [initialSession, setInitialSession] = useState<{ assistantId: string; sessionId: string; messages?: { role: 'assistant' | 'user'; content: string }[] } | undefined>(undefined);
+  const [librarySelectedSession, setLibrarySelectedSession] = useState<{ assistantId: string; sessionId: string; messages?: { role: 'assistant' | 'user'; content: string }[] } | null>(null);
   const [knowledgeBaseProps, setKnowledgeBaseProps] = useState<{
     initialDatasetId?: string;
     initialDocId?: string;
@@ -127,10 +127,27 @@ export default function App() {
                 activeSessionKey={librarySelectedSession ? `${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}` : undefined}
                 onOpenSession={(session) => {
                   const assistantId = (session as any).assistantId as string | undefined;
-                  if (!assistantId) return;
-                  const payload = { assistantId, sessionId: session.id };
-                  setLibrarySelectedSession(payload);
-                  setInitialSession(payload);
+                  if (!assistantId) {
+                    console.warn('No assistantId found for session:', session);
+                    return;
+                  }
+
+                  const payload = {
+                    assistantId,
+                    sessionId: session.id,
+                    messages: session.messages || []
+                  };
+                  console.log('Opening session from library:', payload);
+
+                  // 기존 선택 해제 후 새 세션 설정
+                  setLibrarySelectedSession(null);
+                  setInitialSession(undefined);
+
+                  // 비동기로 새 세션 설정
+                  setTimeout(() => {
+                    setLibrarySelectedSession(payload);
+                    setInitialSession(payload);
+                  }, 50);
 
                   const shouldSwitchToChat = typeof window !== 'undefined' && window.matchMedia('(max-width: 767px)').matches;
                   if (shouldSwitchToChat) {
@@ -143,7 +160,7 @@ export default function App() {
               {librarySelectedSession ? (
                 <div className="flex-1 min-h-0 overflow-hidden">
                   <ChatPage
-                    key={`${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}`}
+                    key={`library-${librarySelectedSession.assistantId}-${librarySelectedSession.sessionId}-${Date.now()}`}
                     onEvidenceClick={handleEvidenceClick}
                     onSourceClick={handleSourceClick}
                     initialSession={librarySelectedSession}

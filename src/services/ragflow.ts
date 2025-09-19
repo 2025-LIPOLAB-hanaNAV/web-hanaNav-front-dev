@@ -369,7 +369,7 @@ export async function converseOnce(chatId: string, body: { question: string; ses
       'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ ...body, stream: false }),
+    body: JSON.stringify({ ...body, stream: body.stream ?? false }),
   });
   const ct = res.headers.get('content-type') || '';
   if (!res.ok) {
@@ -405,4 +405,103 @@ export async function converseOnce(chatId: string, body: { question: string; ses
     return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
   }
   return {};
+}
+
+type ConverseStreamHandlers = {
+  signal?: AbortSignal;
+  onMessage?: (partial: CompletionResult) => void;
+};
+
+function parseSseEvent(chunk: string): any[] {
+  const results: any[] = [];
+  const lines = chunk.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith(':')) continue;
+    if (!trimmed.startsWith('data:')) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    const parsed = tryParseJSON(payload);
+    if (parsed !== null) results.push(parsed);
+  }
+  return results;
+}
+
+export async function converseStream(
+  chatId: string,
+  body: { question: string; session_id?: string; user_id?: string; stream?: boolean },
+  handlers: ConverseStreamHandlers = {},
+): Promise<CompletionResult> {
+  if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+  if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+  const url = new URL(`/api/v1/chats/${chatId}/completions`, RAGFLOW_BASE_URL);
+  const res = await fetch(url.toString(), {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ ...body, stream: true }),
+    signal: handlers.signal,
+  });
+
+  if (!res.ok) {
+    let message = `Request failed: ${res.status}`;
+    try { const j = await res.json() as any; message = j?.message || message; } catch {}
+    throw new Error(message);
+  }
+
+  if (!res.body) {
+    throw new Error('Streaming response body is empty.');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastResult: CompletionResult = {};
+
+  const handleChunk = (text: string): boolean => {
+    if (!text.trim()) return false;
+    const events = parseSseEvent(text);
+    for (const evt of events) {
+      const code = typeof evt?.code === 'number' ? evt.code : 0;
+      if (code && code !== 0) {
+        const message = evt?.message || '스트리밍 도중 오류가 발생했습니다.';
+        throw new Error(message);
+      }
+      const data = evt?.data;
+      if (data === true) {
+        return true;
+      }
+      if (data && typeof data === 'object') {
+        lastResult = {
+          answer: data.answer ?? lastResult.answer,
+          reference: data.reference ?? lastResult.reference,
+          session_id: data.session_id ?? lastResult.session_id,
+        };
+        handlers.onMessage?.({ ...lastResult });
+      }
+    }
+    return false;
+  };
+
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    const segments = buffer.split(/\r?\n\r?\n/);
+    buffer = segments.pop() ?? '';
+    for (const segment of segments) {
+      const shouldStop = handleChunk(segment);
+      if (shouldStop) return lastResult;
+    }
+  }
+
+  buffer += decoder.decode(new Uint8Array(), { stream: false });
+  if (buffer) {
+    const finished = handleChunk(buffer);
+    if (finished) return lastResult;
+  }
+
+  return lastResult;
 }

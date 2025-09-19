@@ -537,8 +537,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         sources: sources
       });
 
-      // Remove ID references and convert 0-based indices in answer text to 1-based
-      const cleanResponseText = (text: string): string => {
+      // Remove ID references, convert indices, and preprocess for better markdown formatting
+      const preprocessMarkdownText = (text: string): string => {
         // Remove [ID:0], [ID:1] etc.
         let cleaned = text.replace(/\[ID:\d+\]/g, '');
 
@@ -548,8 +548,52 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           return `[${index + 1}]`;
         });
 
-        // Clean up extra whitespace and line breaks
-        cleaned = cleaned.replace(/\s+/g, ' ').trim();
+        // Temporarily replace bold text to protect it from other processing
+        const boldTextMap = new Map<string, string>();
+        let boldCounter = 0;
+        cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
+          const placeholder = `__BOLD_${boldCounter++}__`;
+          boldTextMap.set(placeholder, match);
+          return placeholder;
+        });
+
+        // 1. Add three spaces after periods for markdown line breaks
+        cleaned = cleaned.replace(/\.\s/g, '.   ');
+
+        // 2. Add line breaks before headers (#, ##, ###, etc.)
+        cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
+
+        // 3. Add line breaks before numbered lists (1., 2., 3., etc.)
+        cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
+
+        // 4. Add line breaks around table formats
+        // Before table rows starting with |
+        cleaned = cleaned.replace(/([^\n])(\|[^|]*\|)/g, '$1\n$2');
+        // After table rows ending with |
+        cleaned = cleaned.replace(/(\|[^|]*\|)([^\n|])/g, '$1\n$2');
+        // Add line breaks around horizontal rules (---, ***, ___)
+        cleaned = cleaned.replace(/([^\n])([-*_]{3,})/g, '$1\n$2');
+        cleaned = cleaned.replace(/([-*_]{3,})([^\n])/g, '$1\n$2');
+
+        // 5. Additional markdown preprocessing improvements
+        // Add line breaks before unordered lists (-, *, +)
+        cleaned = cleaned.replace(/([^\n])([-*+]\s)/g, '$1\n$2');
+        // Add line breaks before code blocks (```)
+        cleaned = cleaned.replace(/([^\n])(```)/g, '$1\n$2');
+        cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
+        // Add line breaks before blockquotes (>)
+        cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
+
+        // Restore bold text
+        boldTextMap.forEach((original, placeholder) => {
+          cleaned = cleaned.replace(placeholder, original);
+        });
+
+        // Clean up excessive line breaks (more than 2 consecutive)
+        cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+        // Trim whitespace
+        cleaned = cleaned.trim();
 
         return cleaned;
       };
@@ -557,7 +601,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       const assistantMessage: ChatMessage = {
         id: (Date.now() + 2).toString(),
         type: 'assistant',
-        content: cleanResponseText(result.answer || '응답이 비어 있습니다.'),
+        content: preprocessMarkdownText(result.answer || '응답이 비어 있습니다.'),
         timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
         state: 'success',
         evidenceCount: Number(evidenceCount) || undefined,

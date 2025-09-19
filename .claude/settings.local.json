@@ -8,7 +8,8 @@
       "Bash(npm install)",
       "Bash(pkill:*)",
       "Bash(npm install:*)",
-      "Read(//c/Users/user/Pictures/Screenshots/**)"
+      "Read(//c/Users/user/Pictures/Screenshots/**)",
+      "Bash(npm run type-check:*)"
     ],
     "deny": [],
     "ask": []

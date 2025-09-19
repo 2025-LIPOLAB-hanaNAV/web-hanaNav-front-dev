@@ -74,7 +74,7 @@ export function ChatBubble({
         className
       )}>
         {!isUser && (
-          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-purple-200 shadow-sm">
+          <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 shadow-sm">
             <span className="text-lg">🤖</span>
           </div>
         )}
@@ -110,9 +110,9 @@ export function ChatBubble({
       className
     )}>
       {!isUser && (
-        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gradient-to-br from-pink-200 to-purple-200 shadow-sm flex-shrink-0">
+        <div className="w-8 h-8 rounded-full flex items-center justify-center bg-gray-200 shadow-sm flex-shrink-0">
           {isSystem ? (
-            <Icon name="shield" size={16} className="text-purple-600" />
+            <Icon name="shield" size={16} className="text-gray-600" />
           ) : (
             <span className="text-lg">🤖</span>
           )}

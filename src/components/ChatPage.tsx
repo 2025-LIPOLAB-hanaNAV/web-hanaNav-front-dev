@@ -276,7 +276,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         const name = `임시 어시스턴트 ${new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}`;
         const created = await createChat({
           name,
-          dataset_ids: selectedKBs.length > 0 ? [dsId!, ...selectedKBs] : [dsId!],
+          dataset_ids: [dsId!], // 첨부파일 기반 채팅은 오직 첨부파일만 사용
           llm: activeModel ? { model_name: activeModel } : undefined,
           prompt: {
             system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
@@ -290,8 +290,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         eaId = created.id;
         setEphemeralAssistantId(eaId);
       } else {
-        const ids = selectedKBs.length > 0 ? [dsId!, ...selectedKBs] : [dsId!];
-        try { await updateChat(eaId, { dataset_ids: ids }); } catch {}
+        // 기존 임시 어시스턴트 업데이트 - 첨부파일만 사용
+        try { await updateChat(eaId, { dataset_ids: [dsId!] }); } catch {}
       }
 
       setAssistantId(eaId!);
@@ -329,6 +329,114 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     quick: RAGFLOW_ASSISTANT_QUICK_ID,
     precise: RAGFLOW_ASSISTANT_PRECISE_ID,
     summary: RAGFLOW_ASSISTANT_SUMMARY_ID,
+  };
+
+  // 어시스턴트별 프롬프트 정의
+  const assistantPrompts = {
+    quick: {
+      general: {
+        prompt: `당신은 "빠른별돌이"라는 이름의 친근한 AI 어시스턴트입니다 🌙
+
+빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
+사용자와 자연스럽고 친근한 대화를 나누며, 질문에 대해 가능한 한 빠르고 간결하게 답변합니다.
+
+기본 원칙:
+1. 인사나 일상 대화에는 자연스럽고 친근하게 응답하세요.
+2. 일반적인 질문에는 상식과 일반 지식을 활용해 도움을 주세요.
+3. 전문적이거나 구체적인 정보가 필요한 경우 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하세요.
+4. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
+5. 친근하고 따뜻한 톤을 유지하되, 과도하게 길지 않게 답변하세요.
+
+🌟 사용자의 모든 질문에 성심껏 도움을 드리겠습니다`,
+        opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?"
+      },
+      rag: {
+        prompt: `당신은 "빠른별돌이"라는 이름의 챗봇입니다 🌙
+빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
+
+지식베이스 활용 규칙:
+1. 아래 {knowledge}는 지식베이스에서 검색된 문서 조각입니다.
+2. 질문이 지식베이스와 관련 있을 때만 {knowledge}를 참고하세요.
+3. {knowledge}를 사용할 경우, 반드시 답변 안에 출처를 포함해야 합니다.
+4. {knowledge}가 비어 있거나 관련성이 낮으면, 무시하고 일반 지식이나 기본 대화로 답하세요.
+5. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
+
+지식베이스 내용:
+{knowledge}
+(위 내용은 필요할 때만 참고하세요 🌟)`,
+        opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요."
+      }
+    },
+    precise: {
+      general: {
+        prompt: `당신은 "정밀한별"이라는 이름의 전문적인 AI 어시스턴트입니다 🔍
+
+정밀한별은 정확성과 신뢰성을 최우선으로 하는 전문가 수준의 어시스턴트입니다.
+모든 답변을 면밀히 검토하고, 다각도로 분석하여 가장 정확한 정보를 제공합니다.
+
+기본 원칙:
+1. 모든 답변은 다단계 검증을 거쳐 정확성을 확보합니다.
+2. 불확실한 정보는 절대 추측하지 않고 "확인이 필요합니다"라고 명시합니다.
+3. 복잡한 문제는 단계별로 분석하여 체계적으로 설명합니다.
+4. 답변 시 근거와 논리를 명확히 제시합니다.
+5. 필요시 추가 확인이나 검증 방법을 안내합니다.
+
+🔍 정확하고 신뢰할 수 있는 정보만을 제공하겠습니다`,
+        opener: "🔍 안녕하세요! 정밀한별입니다. 정확한 검증이 필요한 질문을 말씀해 주세요."
+      },
+      rag: {
+        prompt: `당신은 "정밀한별"이라는 이름의 전문 검증 챗봇입니다 🔍
+정밀한별은 정확성과 신뢰성을 최우선으로 하는 전문가 수준의 어시스턴트입니다.
+
+지식베이스 정밀 활용 규칙:
+1. 아래 {knowledge}는 검증된 문서에서 추출한 신뢰할 수 있는 정보입니다.
+2. {knowledge}의 내용을 철저히 분석하고 교차 검증합니다.
+3. 여러 문서 간 상충되는 내용이 있다면 반드시 명시합니다.
+4. {knowledge}를 인용할 때는 정확한 출처와 근거를 명시합니다.
+5. 지식베이스에 정보가 부족하면 "추가 검증이 필요한 사항"으로 안내합니다.
+6. 모든 답변은 단계별 검증 과정을 포함합니다.
+
+검증된 지식베이스 내용:
+{knowledge}
+(위 내용을 다각도로 분석하여 정밀한 답변을 제공합니다 🔍)`,
+        opener: "🔍 정밀한별입니다! 전문적인 검증과 함께 정확한 답변을 드리겠습니다."
+      }
+    },
+    summary: {
+      general: {
+        prompt: `당신은 "요약달님"이라는 이름의 요약 전문 AI 어시스턴트입니다 📝
+
+요약달님은 복잡한 정보를 핵심만 뽑아 간결하고 이해하기 쉽게 전달하는 전문가입니다.
+긴 내용도 핵심 포인트만 추려 명확하게 정리합니다.
+
+기본 원칙:
+1. 모든 답변은 핵심 내용만 간추려 3줄 이내로 요약합니다.
+2. 중요도에 따라 우선순위를 매겨 정보를 정리합니다.
+3. 불필요한 세부사항은 제거하고 본질만 전달합니다.
+4. 복잡한 개념도 쉬운 표현으로 요약합니다.
+5. 필요시 핵심 키워드나 요점을 번호로 정리합니다.
+
+📝 복잡한 내용도 핵심만 뽑아 명쾌하게 정리해 드리겠습니다`,
+        opener: "📝 안녕하세요! 요약달님입니다. 정리가 필요한 내용을 말씀해 주세요."
+      },
+      rag: {
+        prompt: `당신은 "요약달님"이라는 이름의 요약 전문 챗봇입니다 📝
+요약달님은 방대한 문서에서 핵심만 뽑아 간결하게 정리하는 전문가입니다.
+
+지식베이스 요약 규칙:
+1. 아래 {knowledge}에서 가장 중요한 핵심 정보만 추출합니다.
+2. 여러 문서의 내용을 종합하여 통합된 요약을 제공합니다.
+3. 중복되는 내용은 제거하고 고유한 정보만 정리합니다.
+4. 요약 시 출처별로 핵심 포인트를 구분하여 제시합니다.
+5. 모든 요약은 3-5개의 핵심 포인트로 압축합니다.
+6. 상세 내용이 필요한 경우에만 부가 설명을 추가합니다.
+
+문서 원본 내용:
+{knowledge}
+(위 내용에서 핵심만 추려 명쾌하게 요약합니다 📝)`,
+        opener: "📝 요약달님입니다! 복잡한 문서 내용을 핵심만 뽑아 정리해 드리겠습니다."
+      }
+    }
   };
 
   const defaultAssistants: ChatAssistant[] = [
@@ -453,48 +561,39 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     setKbToastType(null);
     try {
       if (isEphemeral) {
-        const ids = ephemeralDatasetId ? [ephemeralDatasetId, ...selectedKBs] : [...selectedKBs];
+        // 첨부파일 기반 채팅에서는 오직 첨부파일만 사용
+        const ids = ephemeralDatasetId ? [ephemeralDatasetId] : [];
         // 지식베이스만 업데이트 (프롬프트는 유지)
         await updateChat(activeAssistantId, {
           dataset_ids: ids
         });
       } else {
+        // 현재 어시스턴트 모드에 따른 프롬프트 선택
+        const getAssistantPrompts = () => {
+          // 어시스턴트 ID로 모드 확인
+          if (activeAssistantId === defaultAssistantByMode.precise) {
+            return assistantPrompts.precise;
+          } else if (activeAssistantId === defaultAssistantByMode.summary) {
+            return assistantPrompts.summary;
+          } else {
+            return assistantPrompts.quick; // 기본값
+          }
+        };
+
+        const modePrompts = getAssistantPrompts();
+
         // 일반 어시스턴트는 지식베이스와 프롬프트를 동적으로 변경
         const promptConfig = selectedKBs.length === 0 ? {
           // 일상대화용 프롬프트 (knowledge 변수 없음)
-          prompt: `당신은 "빠른별돌이"라는 이름의 친근한 AI 어시스턴트입니다 🌙
-
-빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
-사용자와 자연스럽고 친근한 대화를 나누며, 질문에 대해 가능한 한 빠르고 간결하게 답변합니다.
-
-기본 원칙:
-1. 인사나 일상 대화에는 자연스럽고 친근하게 응답하세요.
-2. 일반적인 질문에는 상식과 일반 지식을 활용해 도움을 주세요.
-3. 전문적이거나 구체적인 정보가 필요한 경우 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하세요.
-4. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
-5. 친근하고 따뜻한 톤을 유지하되, 과도하게 길지 않게 답변하세요.
-
-🌟 사용자의 모든 질문에 성심껏 도움을 드리겠습니다`,
-          opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?",
+          prompt: modePrompts.general.prompt,
+          opener: modePrompts.general.opener,
           empty_response: "",
           show_quote: false,
           variables: []
         } : {
           // 지식베이스용 프롬프트 (knowledge 변수 포함)
-          prompt: `당신은 "빠른별돌이"라는 이름의 챗봇입니다 🌙
-빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
-
-지식베이스 활용 규칙:
-1. 아래 {knowledge}는 지식베이스에서 검색된 문서 조각입니다.
-2. 질문이 지식베이스와 관련 있을 때만 {knowledge}를 참고하세요.
-3. {knowledge}를 사용할 경우, 반드시 답변 안에 출처를 포함해야 합니다.
-4. {knowledge}가 비어 있거나 관련성이 낮으면, 무시하고 일반 지식이나 기본 대화로 답하세요.
-5. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
-
-지식베이스 내용:
-{knowledge}
-(위 내용은 필요할 때만 참고하세요 🌟)`,
-          opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요.",
+          prompt: modePrompts.rag.prompt,
+          opener: modePrompts.rag.opener,
           empty_response: "",
           show_quote: true,
           variables: [{ key: "knowledge", optional: true }]
@@ -512,7 +611,12 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           prompt: promptConfig
         });
       }
-      setKbToast(selectedKBs.length === 0 ? '지식베이스 연결이 해제되었습니다.' : `${selectedKBs.length}개 지식베이스가 연결되어 자동으로 설정되었습니다.`);
+
+      if (isEphemeral) {
+        setKbToast('첨부파일 기반 채팅으로 설정되었습니다.');
+      } else {
+        setKbToast(selectedKBs.length === 0 ? '지식베이스 연결이 해제되었습니다.' : `${selectedKBs.length}개 지식베이스가 연결되어 자동으로 설정되었습니다.`);
+      }
       setKbToastType('success');
     } catch (err: any) {
       setKbToast(err?.message || '지식베이스 적용에 실패했습니다.');
@@ -979,16 +1083,31 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 
             {/* Knowledge Base Selector (Dialog) */}
             <div className="flex items-center gap-2 flex-shrink-0">
-              <Button variant="outline" size="sm" className="gap-1 h-8 text-xs px-2" onClick={() => setIsKBOpen(true)}>
-                <Icon name="book-open" size={14} />
-                <span className="hidden sm:inline">지식베이스</span>
-                {selectedKBs.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-xs px-1">{selectedKBs.length}</Badge>
-                )}
-              </Button>
-              <Button variant="secondary" size="sm" className="h-8 text-xs px-2" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
-                {kbApplying ? '적용중' : '적용'}
-              </Button>
+              {ephemeralAssistantId && assistantId === ephemeralAssistantId ? (
+                <>
+                  <Button variant="outline" size="sm" className="gap-1 h-8 text-xs px-2 border-orange-200 bg-orange-50 text-orange-700" disabled>
+                    <Icon name="paperclip" size={14} />
+                    <span className="hidden sm:inline">첨부파일 전용</span>
+                    <Badge variant="secondary" className="ml-1 text-xs px-1 bg-orange-100 text-orange-800">파일</Badge>
+                  </Button>
+                  <Button variant="secondary" size="sm" className="h-8 text-xs px-2" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
+                    {kbApplying ? '적용중' : '적용'}
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <Button variant="outline" size="sm" className="gap-1 h-8 text-xs px-2" onClick={() => setIsKBOpen(true)}>
+                    <Icon name="book-open" size={14} />
+                    <span className="hidden sm:inline">지식베이스</span>
+                    {selectedKBs.length > 0 && (
+                      <Badge variant="secondary" className="ml-1 text-xs px-1">{selectedKBs.length}</Badge>
+                    )}
+                  </Button>
+                  <Button variant="secondary" size="sm" className="h-8 text-xs px-2" onClick={applySelectedKnowledgeBases} disabled={kbApplying}>
+                    {kbApplying ? '적용중' : '적용'}
+                  </Button>
+                </>
+              )}
             </div>
           </div>
 

@@ -157,7 +157,39 @@ export function ChatBubble({
           )}
 
           <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert">
-            <ReactMarkdown>{content}</ReactMarkdown>
+            <ReactMarkdown
+              components={{
+                // 링크 안전성 확보
+                a: ({ href, children, ...props }) => (
+                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                    {children}
+                  </a>
+                ),
+                // 코드 블록 스타일링
+                code: ({ className, children, ...props }) => (
+                  <code
+                    className={cn(
+                      "px-1.5 py-0.5 rounded bg-muted text-foreground font-mono text-xs",
+                      className
+                    )}
+                    {...props}
+                  >
+                    {children}
+                  </code>
+                ),
+                // 인라인 코드 스타일링
+                pre: ({ children, ...props }) => (
+                  <pre
+                    className="bg-muted p-3 rounded-md overflow-x-auto text-sm"
+                    {...props}
+                  >
+                    {children}
+                  </pre>
+                )
+              }}
+            >
+              {content}
+            </ReactMarkdown>
           </div>
           
           {/* Assistant message metadata */}

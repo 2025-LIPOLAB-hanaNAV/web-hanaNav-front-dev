@@ -261,12 +261,36 @@ export async function createChat(body: { name: string; dataset_ids?: string[]; a
   return data;
 }
 
+export async function getChatDetails(chatId: string): Promise<any> {
+  return await ragFetch<any>(`/api/v1/chats/${chatId}`);
+}
+
 export async function updateChat(chatId: string, body: { name?: string; dataset_ids?: string[]; avatar?: string; llm?: Record<string, any>; prompt?: Record<string, any> }): Promise<void> {
+  console.log('📡 updateChat API 호출:', {
+    chatId,
+    dataset_ids: body.dataset_ids,
+    promptMode: body.prompt ? (body.prompt.variables?.length > 0 ? '지식베이스용' : '일상대화용') : 'unchanged'
+  });
+
   await ragFetch<void>(`/api/v1/chats/${chatId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+  console.log('✅ updateChat 완료');
+
+  // 업데이트 후 실제 상태 확인
+  try {
+    const details = await getChatDetails(chatId);
+    console.log('🔍 업데이트 후 어시스턴트 상태:', {
+      chatId,
+      dataset_ids: details.dataset_ids,
+      actualDatasets: details.dataset_ids?.length || 0
+    });
+  } catch (e) {
+    console.warn('어시스턴트 상태 확인 실패:', e);
+  }
 }
 
 export async function deleteChats(ids: string[]): Promise<void> {

@@ -132,8 +132,24 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         setAssistantId(initialSession.assistantId);
         setSessionId(initialSession.sessionId);
 
-        // 메시지가 전달되었으면 직접 사용
-        if (initialSession.messages && initialSession.messages.length > 0) {
+        // localStorage에서 먼저 메시지 복원 시도 (sources 정보 포함)
+        let restoredFromLocalStorage = false;
+        try {
+          const raw = localStorage.getItem(`hana_messages_${initialSession.sessionId}`);
+          if (raw) {
+            const cached = JSON.parse(raw) as typeof messages;
+            if (Array.isArray(cached) && cached.length > 0) {
+              console.log('Loading messages from localStorage (with sources):', cached);
+              setMessages(cached);
+              restoredFromLocalStorage = true;
+            }
+          }
+        } catch (e) {
+          console.warn('Failed to load messages from localStorage:', e);
+        }
+
+        // localStorage에 없으면 세션 데이터에서 복원 (sources 정보 없을 수 있음)
+        if (!restoredFromLocalStorage && initialSession.messages && initialSession.messages.length > 0) {
           const convertedMessages = initialSession.messages
             .filter(msg => (msg.content || '').trim().length > 0)
             .map((msg, index) => ({
@@ -141,10 +157,16 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
               type: msg.role === 'assistant' ? 'assistant' as const : 'user' as const,
               content: msg.content || '',
               timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-              state: 'success' as const
+              state: 'success' as const,
+              // sources 정보도 복원 (메시지 객체에 있으면)
+              sources: (msg as any).sources,
+              evidenceCount: (msg as any).evidenceCount,
+              responseTime: (msg as any).responseTime,
+              hasPII: (msg as any).hasPII,
+              isEvidenceLow: (msg as any).isEvidenceLow
             }));
 
-          console.log('Loading messages from session data:', convertedMessages);
+          console.log('Loading messages from session data (fallback):', convertedMessages);
           setMessages(convertedMessages);
 
           // 로컬 스토리지에도 저장
@@ -153,8 +175,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           } catch (e) {
             console.warn('Failed to save messages to localStorage:', e);
           }
-        } else {
-          console.log('No messages in session data, setting empty array');
+        } else if (!restoredFromLocalStorage) {
+          console.log('No messages found, setting empty array');
           setMessages([]);
         }
       }
@@ -439,25 +461,26 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       } else {
         // 일반 어시스턴트는 지식베이스와 프롬프트를 동적으로 변경
         const promptConfig = selectedKBs.length === 0 ? {
-          // 일반 대화용 프롬프트 (knowledge 변수 없음)
-          prompt: `당신은 "빠른별돌이"라는 이름의 친근한 AI 어시스턴트입니다 🌟
+          // 일상대화용 프롬프트 (knowledge 변수 없음)
+          prompt: `당신은 "빠른별돌이"라는 이름의 친근한 AI 어시스턴트입니다 🌙
 
 빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
 사용자와 자연스럽고 친근한 대화를 나누며, 질문에 대해 가능한 한 빠르고 간결하게 답변합니다.
 
 기본 원칙:
-- 인사나 일상 대화에는 자연스럽고 친근하게 응답
-- 업무 질문에는 정확하고 간결하게 답변
-- 모르는 내용은 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하기
-- 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성
+1. 인사나 일상 대화에는 자연스럽고 친근하게 응답하세요.
+2. 일반적인 질문에는 상식과 일반 지식을 활용해 도움을 주세요.
+3. 전문적이거나 구체적인 정보가 필요한 경우 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하세요.
+4. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
+5. 친근하고 따뜻한 톤을 유지하되, 과도하게 길지 않게 답변하세요.
 
-🌟 무엇을 도와드릴까요?`,
+🌟 사용자의 모든 질문에 성심껏 도움을 드리겠습니다`,
           opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?",
           empty_response: "",
           show_quote: false,
           variables: []
         } : {
-          // RAG용 프롬프트 (knowledge 변수 포함)
+          // 지식베이스용 프롬프트 (knowledge 변수 포함)
           prompt: `당신은 "빠른별돌이"라는 이름의 챗봇입니다 🌙
 빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
 
@@ -476,6 +499,13 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           show_quote: true,
           variables: [{ key: "knowledge", optional: true }]
         };
+
+        console.log('🔍 지식베이스 적용:', {
+          assistantId: activeAssistantId,
+          selectedKBs,
+          dataset_ids: selectedKBs,
+          promptMode: selectedKBs.length === 0 ? '일상대화용' : '지식베이스용'
+        });
 
         await updateChat(activeAssistantId, {
           dataset_ids: selectedKBs,
@@ -737,11 +767,20 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       if (!initialSession) {
         setSessionId(undefined);  // 기존 세션 초기화
         hasExternalSession.current = false;
+        setSelectedKBs([]);  // 지식베이스 선택 초기화 - 새 세션은 일상대화 모드로 시작
       }
       handleSearch(initialQuery, initialFiles);
       onQueryProcessed?.();
     }
   }, [initialQuery, initialFiles, initialSession]);
+
+  // 새 세션 생성 시 지식베이스 선택 초기화
+  useEffect(() => {
+    // sessionId가 없거나 변경되면 지식베이스 선택 초기화
+    if (!sessionId || (sessionId && messages.length === 0)) {
+      setSelectedKBs([]);
+    }
+  }, [sessionId, messages.length]);
 
   const handleRetry = () => {
     // Implement retry logic

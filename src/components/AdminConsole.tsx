@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
+import { EvaluationPanel } from './EvaluationPanel';
 
 interface KnowledgeConnector {
   id: string;
@@ -616,143 +617,7 @@ export function AdminConsole() {
 
             {/* Quality Assessment Tab */}
             <TabsContent value="quality-assessment" className="space-y-6">
-              <div className="flex justify-between items-center">
-                <h2 className="text-xl font-medium">품질 평가 실행</h2>
-                <Button className="flex items-center gap-2">
-                  <Zap className="h-4 w-4" />
-                  새 평가 시작
-                </Button>
-              </div>
-
-              {/* Quick Assessment Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                <Card className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">마스터 평가</h3>
-                    <Trophy className="h-5 w-5 text-primary" />
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    정확도, 가독성, 관련성을 종합 평가합니다
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full">
-                    빠른 평가 시작
-                  </Button>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">거절 평가</h3>
-                    <AlertTriangle className="h-5 w-5 text-warning" />
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    답변이 필요없는 질문에 대한 답변 거절 성능 평가
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full">
-                    빠른 평가 시작
-                  </Button>
-                </Card>
-
-                <Card className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <h3 className="font-medium">PII 평가</h3>
-                    <Shield className="h-5 w-5 text-destructive" />
-                  </div>
-                  <p className="text-sm text-muted-foreground mb-3">
-                    개인정보 유출 방지 성능을 평가합니다
-                  </p>
-                  <Button variant="outline" size="sm" className="w-full">
-                    빠른 평가 시작
-                  </Button>
-                </Card>
-              </div>
-
-              {/* Assessment Results */}
-              <Card className="p-4">
-                <h3 className="font-medium mb-4 flex items-center gap-2">
-                  <BarChart3 className="h-4 w-4 text-primary" />
-                  최근 평가 결과
-                </h3>
-
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>데이터셋</TableHead>
-                      <TableHead>모델</TableHead>
-                      <TableHead>평가일</TableHead>
-                      <TableHead>정확도</TableHead>
-                      <TableHead>환각율</TableHead>
-                      <TableHead>관련성</TableHead>
-                      <TableHead>종합점수</TableHead>
-                      <TableHead>상태</TableHead>
-                      <TableHead></TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {qualityAssessments.map((assessment) => (
-                      <TableRow key={assessment.id}>
-                        <TableCell className="font-medium">
-                          {assessment.datasetName}
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="outline" className="text-xs">
-                            {assessment.modelName}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-sm text-muted-foreground">
-                          {assessment.assessmentDate}
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress value={assessment.accuracy} className="w-12 h-2" />
-                            <span className="text-xs font-medium">
-                              {assessment.accuracy}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress value={100 - assessment.hallucination} className="w-12 h-2" />
-                            <span className="text-xs font-medium text-destructive">
-                              {assessment.hallucination}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <div className="flex items-center gap-2">
-                            <Progress value={assessment.relevance} className="w-12 h-2" />
-                            <span className="text-xs font-medium">
-                              {assessment.relevance}%
-                            </span>
-                          </div>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={assessment.overallScore >= 90 ? "default" : assessment.overallScore >= 80 ? "secondary" : "destructive"}
-                            className="font-medium"
-                          >
-                            {assessment.overallScore}점
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Badge
-                            variant={assessment.status === 'completed' ? "default" : assessment.status === 'running' ? "secondary" : "destructive"}
-                            className="text-xs"
-                          >
-                            {assessment.status === 'completed' && '완료'}
-                            {assessment.status === 'running' && '실행중'}
-                            {assessment.status === 'failed' && '실패'}
-                          </Badge>
-                        </TableCell>
-                        <TableCell>
-                          <Button variant="ghost" size="sm">
-                            상세보기
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </Card>
+              <EvaluationPanel />
             </TabsContent>
 
           </div>

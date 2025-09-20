@@ -9,7 +9,7 @@ import {
   Filter, Settings, Home, ShieldCheck, PiggyBank, CreditCard, Coins,
   Route, Users, Navigation, Loader2, RefreshCw, Database, MapPin,
   BookmarkCheck, MoreHorizontal, ExternalLink, Eye, Clock, X,
-  ShieldAlert, ChevronLeft, ChevronRight, Menu
+  ShieldAlert, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Menu
 } from "lucide-react";
 
 const ICONS = {
@@ -57,6 +57,8 @@ const ICONS = {
   "shield-alert": ShieldAlert,
   "chevron-left": ChevronLeft,
   "chevron-right": ChevronRight,
+  "chevron-down": ChevronDown,
+  "chevron-up": ChevronUp,
   "menu": Menu,
 } as const;
 

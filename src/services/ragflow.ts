@@ -1,4 +1,4 @@
-import { RAGFLOW_BASE_URL, RAGFLOW_API_KEY } from '../config';
+import { RAGFLOW_BASE_URL, RAGFLOW_API_KEY, USE_PROXY_FLAG } from '../config';
 
 type ListDatasetsParams = {
   page?: number;
@@ -24,19 +24,37 @@ type ApiResponse<T> = { code: number; data?: T; message?: string };
 async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
   if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
-  const url = new URL(path, RAGFLOW_BASE_URL);
-  const res = await fetch(url.toString(), {
-    ...init,
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-      ...(init?.headers || {}),
-    },
-  });
-  const json = await res.json() as ApiResponse<any>;
-  if (!res.ok || json.code !== 0) {
-    throw new Error(json.message || `Request failed: ${res.status}`);
+
+  // 프록시 사용 시 경로에 /ragflow 추가
+  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  const url = new URL(fullPath, RAGFLOW_BASE_URL);
+
+  // 타임아웃 컨트롤러 생성 (5분)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5분 타임아웃
+
+  try {
+    const res = await fetch(url.toString(), {
+      ...init,
+      headers: {
+        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+        ...(init?.headers || {}),
+      },
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const json = await res.json() as ApiResponse<any>;
+    if (!res.ok || json.code !== 0) {
+      throw new Error(json.message || `Request failed: ${res.status}`);
+    }
+    return json.data as T;
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout: 응답 시간이 5분을 초과했습니다.');
+    }
+    throw error;
   }
-  return json.data as T;
 }
 
 export async function listDatasets(params: ListDatasetsParams = {}): Promise<Dataset[]> {
@@ -99,21 +117,40 @@ export async function uploadDocuments(datasetId: string, files: File[]): Promise
   if (!files || files.length === 0) return [];
   if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
   if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
-  const url = new URL(`/api/v1/datasets/${datasetId}/documents`, RAGFLOW_BASE_URL);
+
+  // 프록시 사용 시 경로에 /ragflow 추가
+  const path = `/api/v1/datasets/${datasetId}/documents`;
+  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  const url = new URL(fullPath, RAGFLOW_BASE_URL);
+
   const form = new FormData();
   files.forEach(f => form.append('file', f));
-  const res = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-    },
-    body: form,
-  });
-  const json = await res.json() as ApiResponse<DocumentItem[]>;
-  if (!res.ok || json.code !== 0) {
-    throw new Error(json.message || `Upload failed: ${res.status}`);
+  // 타임아웃 컨트롤러 생성 (10분 - 파일 업로드는 더 길게)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 600000); // 10분 타임아웃
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+      },
+      body: form,
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    const json = await res.json() as ApiResponse<DocumentItem[]>;
+    if (!res.ok || json.code !== 0) {
+      throw new Error(json.message || `Upload failed: ${res.status}`);
+    }
+    return json.data || [];
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Upload timeout: 파일 업로드 시간이 10분을 초과했습니다.');
+    }
+    throw error;
   }
-  return json.data || [];
 }
 
 export async function listDocuments(datasetId: string, params: {
@@ -386,49 +423,84 @@ export type CompletionResult = {
 };
 
 export async function converseOnce(chatId: string, body: { question: string; session_id?: string; user_id?: string; stream?: boolean }): Promise<CompletionResult> {
-  const url = `/api/v1/chats/${chatId}/completions`;
-  const res = await fetch(new URL(url, RAGFLOW_BASE_URL!).toString(), {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ ...body, stream: body.stream ?? false }),
-  });
-  const ct = res.headers.get('content-type') || '';
-  if (!res.ok) {
-    let message = `Request failed: ${res.status}`;
-    try { const j = await res.json() as any; message = j?.message || message; } catch {}
-    throw new Error(message);
-  }
-  // Try JSON first
-  if (ct.includes('application/json')) {
-    const j = await res.json() as any;
-    // Handle RAGFlow native schema { code, data: { answer, reference, session_id } }
-    if (j && typeof j === 'object' && ('data' in j)) {
-      const data = j.data || {};
-      if (data && typeof data === 'object') {
-        if (data.answer || data.session_id) {
-          return { answer: data.answer, reference: data.reference, session_id: data.session_id };
+  // Use OpenAI-compatible endpoint for better compatibility
+  const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
+  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  // 타임아웃 컨트롤러 생성 (5분)
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 300000); // 5분 타임아웃
+
+  try {
+    const res = await fetch(new URL(fullPath, RAGFLOW_BASE_URL!).toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "model",
+        messages: [{ role: "user", content: body.question }],
+        stream: body.stream ?? false
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+    console.log('RAGFlow response status:', res.status, res.statusText);
+    console.log('RAGFlow response headers:', Object.fromEntries(res.headers.entries()));
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      let message = `Request failed: ${res.status}`;
+      try { const j = await res.json() as any; message = j?.message || message; } catch {}
+      console.error('RAGFlow error response:', message);
+      throw new Error(message);
+    }
+    // Try JSON first
+    if (ct.includes('application/json')) {
+      const j = await res.json() as any;
+      console.log('RAGFlow JSON response:', j);
+
+      // Handle OpenAI-like schema { choices: [ { message: { content } } ] } - prioritize this format
+      if (j && Array.isArray(j.choices) && j.choices.length > 0) {
+        const choice = j.choices[0];
+        const content = choice?.message?.content ?? choice?.delta?.content ?? '';
+        console.log('RAGFlow OpenAI-like response content:', content);
+        return { answer: content, reference: undefined, session_id: body.session_id };
+      }
+
+      // Handle RAGFlow native schema { code, data: { answer, reference, session_id } } - fallback
+      if (j && typeof j === 'object' && ('data' in j)) {
+        const data = j.data || {};
+        console.log('RAGFlow data field:', data);
+        if (data && typeof data === 'object') {
+          if (data.answer || data.session_id) {
+            console.log('RAGFlow answer found:', data.answer);
+            return { answer: data.answer, reference: data.reference, session_id: data.session_id };
+          }
         }
       }
+
+      // Unknown JSON shape
+      console.warn('RAGFlow unknown JSON response shape:', j);
+      return {};
     }
-    // Handle OpenAI-like schema { choices: [ { message: { content } } ] }
-    if (j && Array.isArray(j.choices) && j.choices.length > 0) {
-      const choice = j.choices[0];
-      const content = choice?.message?.content ?? choice?.delta?.content ?? '';
-      return { answer: content, reference: undefined, session_id: undefined };
+    // Fallback: parse SSE-like buffered text
+    const text = await res.text();
+    console.log('RAGFlow text response:', text);
+    const last = parseSseLikeToLastData(text);
+    console.log('RAGFlow parsed SSE data:', last);
+    if (last && last.data && last.data !== true) {
+      console.log('RAGFlow SSE answer found:', last.data.answer);
+      return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
     }
-    // Unknown JSON shape
+    console.warn('RAGFlow: No valid response found');
     return {};
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout: 응답 시간이 5분을 초과했습니다.');
+    }
+    throw error;
   }
-  // Fallback: parse SSE-like buffered text
-  const text = await res.text();
-  const last = parseSseLikeToLastData(text);
-  if (last && last.data && last.data !== true) {
-    return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
-  }
-  return {};
 }
 
 type ConverseStreamHandlers = {
@@ -458,67 +530,164 @@ export async function converseStream(
 ): Promise<CompletionResult> {
   if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
   if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
-  const url = new URL(`/api/v1/chats/${chatId}/completions`, RAGFLOW_BASE_URL);
-  const res = await fetch(url.toString(), {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({ ...body, stream: true }),
-    signal: handlers.signal,
-  });
 
-  if (!res.ok) {
-    let message = `Request failed: ${res.status}`;
-    try { const j = await res.json() as any; message = j?.message || message; } catch {}
-    throw new Error(message);
-  }
+  // Use OpenAI-compatible endpoint for streaming
+  const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
+  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  const url = new URL(fullPath, RAGFLOW_BASE_URL);
 
-  if (!res.body) {
-    throw new Error('Streaming response body is empty.');
+  // 기본 타임아웃 컨트롤러 생성 (10분 - 스트리밍은 더 길게)
+  const defaultController = new AbortController();
+  const timeoutId = setTimeout(() => defaultController.abort(), 600000); // 10분 타임아웃
+
+  // 사용자 제공 signal과 타임아웃 signal 조합
+  const combinedSignal = handlers.signal || defaultController.signal;
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "model",
+        messages: [{ role: "user", content: body.question }],
+        stream: true
+      }),
+      signal: combinedSignal,
+    });
+    clearTimeout(timeoutId);
+    console.log('RAGFlow stream response status:', res.status, res.statusText);
+    console.log('RAGFlow stream response headers:', Object.fromEntries(res.headers.entries()));
+
+    if (!res.ok) {
+      let message = `Request failed: ${res.status}`;
+      try { const j = await res.json() as any; message = j?.message || message; } catch {}
+      console.error('RAGFlow stream error response:', message);
+      throw new Error(message);
+    }
+
+    if (!res.body) {
+      throw new Error('Streaming response body is empty.');
+    }
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Streaming timeout: 스트리밍 응답 시간이 10분을 초과했습니다.');
+    }
+    throw error;
   }
 
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let lastResult: CompletionResult = {};
+  const sessionId = body.session_id; // Extract session_id to avoid scope issues
+
+  console.log('RAGFlow stream setup complete, starting to read...');
 
   const handleChunk = (text: string): boolean => {
     if (!text.trim()) return false;
+    console.log('RAGFlow stream chunk:', text);
+
+    // Handle OpenAI streaming format (data: {...})
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '' || !trimmed.startsWith('data: ')) continue;
+
+      const dataStr = trimmed.slice(6); // Remove "data: " prefix
+      if (dataStr === '[DONE]') {
+        console.log('RAGFlow OpenAI stream completed');
+        return true;
+      }
+
+      try {
+        const data = JSON.parse(dataStr);
+        console.log('RAGFlow OpenAI stream data:', data);
+
+        // Handle OpenAI streaming format
+        if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
+          const choice = data.choices[0];
+          const delta = choice.delta;
+          const content = delta?.content || '';
+
+          if (content) {
+            lastResult = {
+              answer: (lastResult.answer || '') + content,
+              reference: lastResult.reference,
+              session_id: sessionId,
+            };
+            console.log('RAGFlow updated result:', lastResult);
+            handlers.onMessage?.({ ...lastResult });
+          }
+
+          if (choice.finish_reason === 'stop') {
+            console.log('RAGFlow stream finished');
+            return true;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse OpenAI stream data:', dataStr, e);
+      }
+    }
+
+    // Fallback: try original RAGFlow format
     const events = parseSseEvent(text);
+    console.log('RAGFlow parsed events:', events);
     for (const evt of events) {
       const code = typeof evt?.code === 'number' ? evt.code : 0;
       if (code && code !== 0) {
         const message = evt?.message || '스트리밍 도중 오류가 발생했습니다.';
+        console.error('RAGFlow stream error:', { code, message });
         throw new Error(message);
       }
       const data = evt?.data;
       if (data === true) {
+        console.log('RAGFlow stream completed');
         return true;
       }
       if (data && typeof data === 'object') {
+        console.log('RAGFlow stream data:', data);
         lastResult = {
           answer: data.answer ?? lastResult.answer,
           reference: data.reference ?? lastResult.reference,
           session_id: data.session_id ?? lastResult.session_id,
         };
+        console.log('RAGFlow updated result:', lastResult);
         handlers.onMessage?.({ ...lastResult });
       }
     }
     return false;
   };
 
-  while (true) {
-    const { value, done } = await reader.read();
-    if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    const segments = buffer.split(/\r?\n\r?\n/);
-    buffer = segments.pop() ?? '';
-    for (const segment of segments) {
-      const shouldStop = handleChunk(segment);
-      if (shouldStop) return lastResult;
+  try {
+    while (true) {
+      console.log('RAGFlow about to read stream...');
+      const { value, done } = await reader.read();
+      console.log('RAGFlow stream read:', { done, valueLength: value?.length });
+      if (done) {
+        console.log('RAGFlow stream reading completed');
+        break;
+      }
+
+      const decodedChunk = decoder.decode(value, { stream: true });
+      console.log('RAGFlow decoded chunk:', decodedChunk);
+      buffer += decodedChunk;
+
+      const segments = buffer.split(/\r?\n\r?\n/);
+      buffer = segments.pop() ?? '';
+      console.log('RAGFlow segments:', segments.length, segments);
+
+      for (const segment of segments) {
+        const shouldStop = handleChunk(segment);
+        if (shouldStop) return lastResult;
+      }
     }
+  } catch (streamError) {
+    console.error('RAGFlow stream reading error:', streamError);
+    throw streamError;
   }
 
   buffer += decoder.decode(new Uint8Array(), { stream: false });

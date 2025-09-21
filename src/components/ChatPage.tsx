@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
+import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
 import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
@@ -739,37 +739,31 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         );
       };
 
-      const result = await converseStream(
+      const result = await converseOnce(
         activeAssistantId,
         {
           question: query,
           session_id: ensuredSessionId,
+          stream: false,
           // 지식베이스가 선택되지 않았으면 검색 비활성화
           ...(selectedKBs.length === 0 && {
             temperature: 0.3,
             top_k: 0
           })
-        },
-        {
-          signal: streamController.signal,
-          onMessage: (partial) => {
-            if (partial.answer !== undefined) {
-              latestAnswer = partial.answer || '';
-              updateAssistantContent(latestAnswer);
-            } else if (latestAnswer) {
-              updateAssistantContent(latestAnswer);
-            }
-
-            if (partial.reference !== undefined) {
-              latestReference = partial.reference;
-            }
-
-            if (partial.session_id) {
-              latestSessionId = partial.session_id;
-            }
-          }
         }
       );
+
+      console.log('RAGFlow converseOnce result:', result);
+
+      // Update variables for compatibility with existing code
+      latestAnswer = result.answer || '';
+      latestReference = result.reference;
+      latestSessionId = result.session_id;
+
+      // Update UI immediately with the complete response
+      if (latestAnswer) {
+        updateAssistantContent(latestAnswer);
+      }
 
       const dt = (Date.now() - t0) / 1000;
       const effectiveAnswer = result.answer ?? latestAnswer;

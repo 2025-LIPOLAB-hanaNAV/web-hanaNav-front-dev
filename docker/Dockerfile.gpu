@@ -7,8 +7,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends wget gnupg ca-c
     apt-get install -y --no-install-recommends \
       cuda-libraries-12-4 \
       cuda-cudart-12-4 \
-      libcudnn9-cuda-12 \
-      libcudnn9-cuda-12-dev \
+      libcudnn8 \
+      libcudnn8-dev \
       python3-requests && \
     rm -rf /var/lib/apt/lists/*
 

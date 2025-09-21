@@ -222,15 +222,15 @@ export function AppShell({
         {/* Main Content Area */}
         <div className="flex flex-1 overflow-hidden">
           <main className={cn(
-            "flex-1 overflow-auto",
+            "flex-1 overflow-hidden",
             showRightPanel && "mr-80 hidden lg:block"
           )}>
             {children}
           </main>
-          
+
           {/* Right Panel */}
           {showRightPanel && (
-            <aside className="w-80 border-l bg-elevated overflow-auto hidden lg:block">
+            <aside className="w-80 border-l bg-elevated overflow-hidden hidden lg:block">
               {rightPanelContent}
             </aside>
           )}

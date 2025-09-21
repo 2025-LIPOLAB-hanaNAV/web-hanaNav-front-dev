@@ -46,7 +46,6 @@ async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok || json.code !== 0) {
     throw new Error(json.message || `Request failed: ${res.status}`);
   }
-  return json.data as T;
 }
 
 export async function listDatasets(params: ListDatasetsParams = {}): Promise<Dataset[]> {
@@ -133,7 +132,6 @@ export async function uploadDocuments(datasetId: string, files: File[]): Promise
   if (!res.ok || json.code !== 0) {
     throw new Error(json.message || `Upload failed: ${res.status}`);
   }
-  return json.data || [];
 }
 
 export async function listDocuments(datasetId: string, params: {
@@ -281,12 +279,36 @@ export async function createChat(body: { name: string; dataset_ids?: string[]; a
   return data;
 }
 
+export async function getChatDetails(chatId: string): Promise<any> {
+  return await ragFetch<any>(`/api/v1/chats/${chatId}`);
+}
+
 export async function updateChat(chatId: string, body: { name?: string; dataset_ids?: string[]; avatar?: string; llm?: Record<string, any>; prompt?: Record<string, any> }): Promise<void> {
+  console.log('📡 updateChat API 호출:', {
+    chatId,
+    dataset_ids: body.dataset_ids,
+    promptMode: body.prompt ? (body.prompt.variables?.length > 0 ? '지식베이스용' : '일상대화용') : 'unchanged'
+  });
+
   await ragFetch<void>(`/api/v1/chats/${chatId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   });
+
+  console.log('✅ updateChat 완료');
+
+  // 업데이트 후 실제 상태 확인
+  try {
+    const details = await getChatDetails(chatId);
+    console.log('🔍 업데이트 후 어시스턴트 상태:', {
+      chatId,
+      dataset_ids: details.dataset_ids,
+      actualDatasets: details.dataset_ids?.length || 0
+    });
+  } catch (e) {
+    console.warn('어시스턴트 상태 확인 실패:', e);
+  }
 }
 
 export async function deleteChats(ids: string[]): Promise<void> {
@@ -420,21 +442,223 @@ export async function converseOnce(chatId: string, body: { question: string; ses
           return { answer: data.answer, reference: data.reference, session_id: data.session_id };
         }
       }
+
+      // Unknown JSON shape
+      console.warn('RAGFlow unknown JSON response shape:', j);
+      return {};
     }
-    // Handle OpenAI-like schema { choices: [ { message: { content } } ] }
-    if (j && Array.isArray(j.choices) && j.choices.length > 0) {
-      const choice = j.choices[0];
-      const content = choice?.message?.content ?? choice?.delta?.content ?? '';
-      return { answer: content, reference: undefined, session_id: undefined };
+    // Fallback: parse SSE-like buffered text
+    const text = await res.text();
+    console.log('RAGFlow text response:', text);
+    const last = parseSseLikeToLastData(text);
+    console.log('RAGFlow parsed SSE data:', last);
+    if (last && last.data && last.data !== true) {
+      console.log('RAGFlow SSE answer found:', last.data.answer);
+      return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
     }
-    // Unknown JSON shape
+    console.warn('RAGFlow: No valid response found');
     return {};
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout: 응답 시간이 5분을 초과했습니다.');
+    }
+    throw error;
   }
-  // Fallback: parse SSE-like buffered text
-  const text = await res.text();
-  const last = parseSseLikeToLastData(text);
-  if (last && last.data && last.data !== true) {
-    return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
+}
+
+type ConverseStreamHandlers = {
+  signal?: AbortSignal;
+  onMessage?: (partial: CompletionResult) => void;
+};
+
+function parseSseEvent(chunk: string): any[] {
+  const results: any[] = [];
+  const lines = chunk.split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith(':')) continue;
+    if (!trimmed.startsWith('data:')) continue;
+    const payload = trimmed.slice(5).trim();
+    if (!payload) continue;
+    const parsed = tryParseJSON(payload);
+    if (parsed !== null) results.push(parsed);
   }
-  return {};
+  return results;
+}
+
+export async function converseStream(
+  chatId: string,
+  body: { question: string; session_id?: string; user_id?: string; stream?: boolean },
+  handlers: ConverseStreamHandlers = {},
+): Promise<CompletionResult> {
+  if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+  if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+
+  // Use OpenAI-compatible endpoint for streaming
+  const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
+  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  const url = new URL(fullPath, RAGFLOW_BASE_URL);
+
+  // 기본 타임아웃 컨트롤러 생성 (10분 - 스트리밍은 더 길게)
+  const defaultController = new AbortController();
+  const timeoutId = setTimeout(() => defaultController.abort(), 600000); // 10분 타임아웃
+
+  // 사용자 제공 signal과 타임아웃 signal 조합
+  const combinedSignal = handlers.signal || defaultController.signal;
+
+  try {
+    const res = await fetch(url.toString(), {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: "model",
+        messages: [{ role: "user", content: body.question }],
+        stream: true
+      }),
+      signal: combinedSignal,
+    });
+    clearTimeout(timeoutId);
+    console.log('RAGFlow stream response status:', res.status, res.statusText);
+    console.log('RAGFlow stream response headers:', Object.fromEntries(res.headers.entries()));
+
+    if (!res.ok) {
+      let message = `Request failed: ${res.status}`;
+      try { const j = await res.json() as any; message = j?.message || message; } catch {}
+      console.error('RAGFlow stream error response:', message);
+      throw new Error(message);
+    }
+
+    if (!res.body) {
+      throw new Error('Streaming response body is empty.');
+    }
+  } catch (error: any) {
+    clearTimeout(timeoutId);
+    if (error.name === 'AbortError') {
+      throw new Error('Streaming timeout: 스트리밍 응답 시간이 10분을 초과했습니다.');
+    }
+    throw error;
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastResult: CompletionResult = {};
+  const sessionId = body.session_id; // Extract session_id to avoid scope issues
+
+  console.log('RAGFlow stream setup complete, starting to read...');
+
+  const handleChunk = (text: string): boolean => {
+    if (!text.trim()) return false;
+    console.log('RAGFlow stream chunk:', text);
+
+    // Handle OpenAI streaming format (data: {...})
+    const lines = text.split('\n');
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed === '' || !trimmed.startsWith('data: ')) continue;
+
+      const dataStr = trimmed.slice(6); // Remove "data: " prefix
+      if (dataStr === '[DONE]') {
+        console.log('RAGFlow OpenAI stream completed');
+        return true;
+      }
+
+      try {
+        const data = JSON.parse(dataStr);
+        console.log('RAGFlow OpenAI stream data:', data);
+
+        // Handle OpenAI streaming format
+        if (data.choices && Array.isArray(data.choices) && data.choices.length > 0) {
+          const choice = data.choices[0];
+          const delta = choice.delta;
+          const content = delta?.content || '';
+
+          if (content) {
+            lastResult = {
+              answer: (lastResult.answer || '') + content,
+              reference: lastResult.reference,
+              session_id: sessionId,
+            };
+            console.log('RAGFlow updated result:', lastResult);
+            handlers.onMessage?.({ ...lastResult });
+          }
+
+          if (choice.finish_reason === 'stop') {
+            console.log('RAGFlow stream finished');
+            return true;
+          }
+        }
+      } catch (e) {
+        console.warn('Failed to parse OpenAI stream data:', dataStr, e);
+      }
+    }
+
+    // Fallback: try original RAGFlow format
+    const events = parseSseEvent(text);
+    console.log('RAGFlow parsed events:', events);
+    for (const evt of events) {
+      const code = typeof evt?.code === 'number' ? evt.code : 0;
+      if (code && code !== 0) {
+        const message = evt?.message || '스트리밍 도중 오류가 발생했습니다.';
+        console.error('RAGFlow stream error:', { code, message });
+        throw new Error(message);
+      }
+      const data = evt?.data;
+      if (data === true) {
+        console.log('RAGFlow stream completed');
+        return true;
+      }
+      if (data && typeof data === 'object') {
+        console.log('RAGFlow stream data:', data);
+        lastResult = {
+          answer: data.answer ?? lastResult.answer,
+          reference: data.reference ?? lastResult.reference,
+          session_id: data.session_id ?? lastResult.session_id,
+        };
+        console.log('RAGFlow updated result:', lastResult);
+        handlers.onMessage?.({ ...lastResult });
+      }
+    }
+    return false;
+  };
+
+  try {
+    while (true) {
+      console.log('RAGFlow about to read stream...');
+      const { value, done } = await reader.read();
+      console.log('RAGFlow stream read:', { done, valueLength: value?.length });
+      if (done) {
+        console.log('RAGFlow stream reading completed');
+        break;
+      }
+
+      const decodedChunk = decoder.decode(value, { stream: true });
+      console.log('RAGFlow decoded chunk:', decodedChunk);
+      buffer += decodedChunk;
+
+      const segments = buffer.split(/\r?\n\r?\n/);
+      buffer = segments.pop() ?? '';
+      console.log('RAGFlow segments:', segments.length, segments);
+
+      for (const segment of segments) {
+        const shouldStop = handleChunk(segment);
+        if (shouldStop) return lastResult;
+      }
+    }
+  } catch (streamError) {
+    console.error('RAGFlow stream reading error:', streamError);
+    throw streamError;
+  }
+
+  buffer += decoder.decode(new Uint8Array(), { stream: false });
+  if (buffer) {
+    const finished = handleChunk(buffer);
+    if (finished) return lastResult;
+  }
+
+  return lastResult;
 }

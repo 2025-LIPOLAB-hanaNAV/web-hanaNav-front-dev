@@ -35,6 +35,10 @@ async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
       // 개발 환경에서는 상대 경로 사용 (Vite 프록시)
       url = `/api/ragflow${path.replace('/api/', '/')}`;
     }
+    // 프록시 모드에서도 인증 헤더 추가
+    if (RAGFLOW_API_KEY) {
+      headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+    }
   } else {
     // 직접 연결
     if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
@@ -119,6 +123,10 @@ export async function uploadDocuments(datasetId: string, files: File[]): Promise
   if (USE_PROXY) {
     // 프록시 서버 사용
     url = `/api/ragflow/api/v1/datasets/${datasetId}/documents`;
+    // 프록시 모드에서도 인증 헤더 추가
+    if (RAGFLOW_API_KEY) {
+      headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+    }
   } else {
     // 직접 연결
     if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
@@ -418,6 +426,10 @@ export async function converseOnce(chatId: string, body: { question: string; ses
   if (USE_PROXY) {
     // 프록시 서버 사용
     url = `/api/ragflow/api/v1/chats/${chatId}/completions`;
+    // 프록시 모드에서도 인증 헤더 추가
+    if (RAGFLOW_API_KEY) {
+      headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+    }
   } else {
     // 직접 연결
     if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
@@ -499,13 +511,26 @@ export async function converseStream(
   body: { question: string; session_id?: string; user_id?: string; stream?: boolean },
   handlers: ConverseStreamHandlers = {},
 ): Promise<CompletionResult> {
-  if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
-  if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+  let url: string;
+  let headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
 
-  // Use OpenAI-compatible endpoint for streaming
-  const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
-  const fullPath = USE_PROXY ? path.replace('/api/', '/api/ragflow/') : path;
-  const url = new URL(fullPath, RAGFLOW_BASE_URL);
+  if (USE_PROXY) {
+    // 프록시 서버 사용
+    url = `/api/ragflow/api/v1/chats_openai/${chatId}/chat/completions`;
+    // 프록시 모드에서도 인증 헤더 추가
+    if (RAGFLOW_API_KEY) {
+      headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+    }
+  } else {
+    // 직접 연결
+    if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
+    if (!RAGFLOW_API_KEY) throw new Error('Missing VITE_RAGFLOW_API_KEY');
+    const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
+    url = new URL(path, RAGFLOW_BASE_URL).toString();
+    headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
+  }
 
   // 기본 타임아웃 컨트롤러 생성 (10분 - 스트리밍은 더 길게)
   const defaultController = new AbortController();
@@ -515,12 +540,9 @@ export async function converseStream(
   const combinedSignal = handlers.signal || defaultController.signal;
 
   try {
-    const res = await fetch(url.toString(), {
+    const res = await fetch(url, {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers,
       body: JSON.stringify({
         model: "model",
         messages: [{ role: "user", content: body.question }],

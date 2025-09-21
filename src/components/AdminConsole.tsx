@@ -6,6 +6,7 @@ import { Progress } from './ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './ui/tabs';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Alert, AlertDescription } from './ui/alert';
+import { getApiUrl } from '../config';
 import { 
   Settings, 
   Database, 
@@ -264,7 +265,7 @@ export function AdminConsole() {
   const fetchSystemMetrics = async () => {
     try {
       // RAGFlow API에서 문서 수 가져오기
-      const documentsResponse = await fetch('/api/documents/stats');
+      const documentsResponse = await fetch(getApiUrl('/api/documents/stats'));
       if (documentsResponse.ok) {
         const documentsData = await documentsResponse.json();
         setSystemMetrics(prev => ({
@@ -274,7 +275,7 @@ export function AdminConsole() {
       }
 
       // 데이터셋 수 가져오기
-      const datasetsResponse = await fetch('/api/datasets');
+      const datasetsResponse = await fetch(getApiUrl('/api/datasets'));
       if (datasetsResponse.ok) {
         const datasetsData = await datasetsResponse.json();
         setSystemMetrics(prev => ({
@@ -284,7 +285,7 @@ export function AdminConsole() {
       }
 
       // Docker 컨테이너 상태 확인
-      const healthResponse = await fetch('/api/health/containers');
+      const healthResponse = await fetch(getApiUrl('/api/health/containers'));
       if (healthResponse.ok) {
         const healthData = await healthResponse.json();
         const allHealthy = Object.values(healthData).every(status => status === 'healthy');

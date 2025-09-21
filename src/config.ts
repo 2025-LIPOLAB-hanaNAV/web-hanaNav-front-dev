@@ -1,11 +1,23 @@
 export const USE_PROXY = true; // 프록시 서버 사용
-export const PROXY_BASE_URL = '';
+export const PROXY_BASE_URL = import.meta.env.VITE_PROXY_BASE_URL || 'https://proxy-hananav-production.up.railway.app';
 
 export const RAGFLOW_BASE_URL = import.meta.env.VITE_RAGFLOW_BASE_URL as string | undefined;
 export const RAGFLOW_API_KEY = import.meta.env.VITE_RAGFLOW_API_KEY as string | undefined;
 export const RAGFLOW_ASSISTANT_QUICK_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_QUICK_ID as string | undefined;
 export const RAGFLOW_ASSISTANT_PRECISE_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_PRECISE_ID as string | undefined;
 export const RAGFLOW_ASSISTANT_SUMMARY_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_SUMMARY_ID as string | undefined;
+
+export function getApiUrl(path: string): string {
+  if (USE_PROXY) {
+    if (PROXY_BASE_URL) {
+      return `${PROXY_BASE_URL}${path}`;
+    } else {
+      return path;
+    }
+  } else {
+    return path;
+  }
+}
 
 export function requireConfig() {
   console.log('[Config] 프록시 서버 모드로 실행중 (Vite 프록시 사용)');

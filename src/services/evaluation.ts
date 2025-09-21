@@ -51,7 +51,7 @@ const resolveEnvString = (value: unknown, fallback = ''): string => {
 const ENV_EVALUATION_ENABLED = resolveEnvFlag(getEnvValue('VITE_ENABLE_RAG_EVALUATION'), false);
 const DEFAULT_JUDGE_MODEL = resolveEnvString(
   getEnvValue('VITE_JUDGE_MODEL') ?? getEnvValue('VITE_OLLAMA_MODEL'),
-  'gemma3:27b'
+  'gemma3:12b'
 );
 const DEFAULT_RAG_MODEL = resolveEnvString(getEnvValue('VITE_RAG_MODEL'), DEFAULT_JUDGE_MODEL);
 

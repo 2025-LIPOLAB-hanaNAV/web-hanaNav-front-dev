@@ -11,6 +11,21 @@ export const RAGFLOW_ASSISTANT_QUICK_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT
 export const RAGFLOW_ASSISTANT_PRECISE_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_PRECISE_ID as string | undefined;
 export const RAGFLOW_ASSISTANT_SUMMARY_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_SUMMARY_ID as string | undefined;
 
+// 리랭커 설정
+export const RAGFLOW_RERANK_MODEL = import.meta.env.VITE_RAGFLOW_RERANK_MODEL as string | undefined;
+export const RAGFLOW_ENABLE_RERANK = import.meta.env.VITE_RAGFLOW_ENABLE_RERANK === 'true';
+
+// 리랭커 설정을 가져오는 유틸리티 함수
+export function getRerankConfig(): { rerank_id?: string } {
+  if (!RAGFLOW_ENABLE_RERANK || !RAGFLOW_RERANK_MODEL) {
+    console.log('🔧 리랭커 비활성화됨 - 환경변수 확인: ENABLE =', RAGFLOW_ENABLE_RERANK, 'MODEL =', RAGFLOW_RERANK_MODEL);
+    return {};
+  }
+
+  console.log('🔧 리랭커 활성화됨:', RAGFLOW_RERANK_MODEL);
+  return { rerank_id: RAGFLOW_RERANK_MODEL };
+}
+
 export function requireConfig() {
   if (!RAGFLOW_BASE_URL || !RAGFLOW_API_KEY) {
     console.warn('[RAGFlow] Missing RAGFLOW_BASE_URL or VITE_RAGFLOW_API_KEY');

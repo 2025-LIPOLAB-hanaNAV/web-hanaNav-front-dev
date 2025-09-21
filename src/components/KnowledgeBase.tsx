@@ -10,6 +10,7 @@ import { Icon } from './ui/Icon';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { cn } from './ui/utils';
 import { createDataset, listDatasets, deleteDatasets, type Dataset, uploadDocuments, listDocuments, type DocumentItem, parseDocuments, stopParsing, deleteDocuments, listChunks, type ChunkItem, addChunk, deleteChunks, updateChunk, retrieveChunks } from '../services/ragflow';
+import { getRerankConfig } from '../config';
 import { Textarea } from './ui/textarea';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from './ui/dialog';
@@ -328,7 +329,7 @@ function KnowledgeBase({
         vector_similarity_weight: 0.5, // 벡터와 키워드의 균형 조정
         top_k: Math.min(retrievePageSize * 3, 150), // 더 많은 후보로 리랭킹 품질 향상
         keyword: true, // 키워드 검색 활성화
-        rerank_id: 'BAAI/bge-reranker-v2-m3' // 리랭킹 모델 활성화
+        ...getRerankConfig(), // 환경변수로 제어되는 리랭커 설정
       });
       console.log('Retrieve Results Debug:', res.chunks);
       setRetrieveCount(res.total);
@@ -704,9 +705,11 @@ function KnowledgeBase({
                                          scorePercentage >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
                                          'text-red-600 dark:text-red-400';
 
-                        // 향상 정보 표시
+                        // 상위권 결과에만 하이라이트 표시 (상위 30% 또는 70% 이상)
                         const enhancementDetails = result._enhancement_details;
-                        const hasEnhancement = enhancementDetails && enhancementDetails.original_score !== enhancementDetails.final_score;
+                        const isTopResult = index < Math.max(1, Math.ceil(retrieveResults.length * 0.3)); // 상위 30%
+                        const isHighScore = enhancementDetails && enhancementDetails.final_score >= 0.7; // 70% 이상
+                        const hasEnhancement = isTopResult && isHighScore;
 
                         return (
                           <div key={index} className="p-4 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
@@ -721,7 +724,7 @@ function KnowledgeBase({
                                 {hasEnhancement && (
                                   <Badge variant="outline" className="text-xs px-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
                                     <Icon name="trending-up" size={10} className="mr-1" />
-                                    향상됨
+상위결과
                                   </Badge>
                                 )}
                               </div>
@@ -741,34 +744,10 @@ function KnowledgeBase({
                             {hasEnhancement && (
                               <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/10 rounded border border-green-200 dark:border-green-800">
                                 <div className="text-xs text-green-700 dark:text-green-300 space-y-1">
-                                  <div className="flex justify-between">
-                                    <span>원본 점수:</span>
-                                    <span>{Math.round(enhancementDetails.original_score * 100)}%</span>
+                                  <div className="flex justify-between font-bold border-b border-green-300 pb-1 mb-1">
+                                    <span title="RAGFlow AI + Reranker가 계산한 의미적 유사도 점수">🤖 AI 유사도:</span>
+                                    <span>{Math.round(enhancementDetails.final_score * 100)}%</span>
                                   </div>
-                                  {enhancementDetails.keyword_bonus > 0 && (
-                                    <div className="flex justify-between">
-                                      <span>키워드 보너스:</span>
-                                      <span>+{Math.round(enhancementDetails.keyword_bonus * 100)}%</span>
-                                    </div>
-                                  )}
-                                  {enhancementDetails.important_bonus > 0 && (
-                                    <div className="flex justify-between">
-                                      <span>중요키워드 보너스:</span>
-                                      <span>+{Math.round(enhancementDetails.important_bonus * 100)}%</span>
-                                    </div>
-                                  )}
-                                  {enhancementDetails.structure_bonus > 0 && (
-                                    <div className="flex justify-between">
-                                      <span>구조 보너스:</span>
-                                      <span>+{Math.round(enhancementDetails.structure_bonus * 100)}%</span>
-                                    </div>
-                                  )}
-                                  {enhancementDetails.metadata_penalty > 0 && (
-                                    <div className="flex justify-between">
-                                      <span>메타데이터 패널티:</span>
-                                      <span className="text-red-600 dark:text-red-400">-{Math.round(enhancementDetails.metadata_penalty * 100)}%</span>
-                                    </div>
-                                  )}
                                 </div>
                               </div>
                             )}

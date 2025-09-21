@@ -18,6 +18,8 @@ interface SourceReference {
   datasetName: string;
   chunkId?: string;
   similarity?: number;
+  documentId?: string;
+  highlightSnippet?: string;
 }
 
 interface ChatBubbleProps {
@@ -53,22 +55,81 @@ export function ChatBubble({
 }: ChatBubbleProps) {
   const isUser = type === 'user';
   const isSystem = type === 'system';
+  const [copyStatus, setCopyStatus] = React.useState<'idle' | 'copied' | 'error'>('idle');
+  const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const canCopy = Boolean(content && content.trim().length > 0);
+
+  const fallbackCopyToClipboard = (text: string): boolean => {
+    try {
+      const textarea = document.createElement('textarea');
+      textarea.value = text;
+      textarea.style.position = 'fixed';
+      textarea.style.opacity = '0';
+      document.body.appendChild(textarea);
+      textarea.focus();
+      textarea.select();
+      const successful = document.execCommand('copy');
+      document.body.removeChild(textarea);
+      return successful;
+    } catch (error) {
+      console.warn('Fallback clipboard copy failed', error);
+      return false;
+    }
+  };
+
+  const handleCopy = async () => {
+    if (!canCopy) return;
+    try {
+      if (navigator?.clipboard?.writeText) {
+        await navigator.clipboard.writeText(content);
+      } else {
+        const ok = fallbackCopyToClipboard(content);
+        if (!ok) throw new Error('execCommand copy failed');
+      }
+      setCopyStatus('copied');
+    } catch (error) {
+      console.error('Clipboard copy failed', error);
+      const fallbackOk = fallbackCopyToClipboard(content);
+      setCopyStatus(fallbackOk ? 'copied' : 'error');
+    }
+  };
+
+  React.useEffect(() => {
+    if (copyStatus === 'idle') return;
+    if (copyResetTimer.current) clearTimeout(copyResetTimer.current);
+    copyResetTimer.current = setTimeout(() => setCopyStatus('idle'), 1800);
+    return () => {
+      if (copyResetTimer.current) {
+        clearTimeout(copyResetTimer.current);
+        copyResetTimer.current = null;
+      }
+    };
+  }, [copyStatus]);
+
+  React.useEffect(() => () => {
+    if (copyResetTimer.current) {
+      clearTimeout(copyResetTimer.current);
+      copyResetTimer.current = null;
+    }
+  }, []);
+
+
+  const [loadingMessage, setLoadingMessage] = React.useState('생각중...');
+
+  React.useEffect(() => {
+    if (state !== 'loading') return;
+    const messages = ['생각중...', '고민중...', '길을 찾는중...', '자료를 검토중...', '답변을 준비중...'];
+    let index = 0;
+    const interval = setInterval(() => {
+      index = (index + 1) % messages.length;
+      setLoadingMessage(messages[index]);
+    }, 1500);
+
+    return () => clearInterval(interval);
+  }, [state]);
 
   if (state === 'loading') {
-    const [loadingMessage, setLoadingMessage] = React.useState('생각중...');
-
-    React.useEffect(() => {
-      const messages = ['생각중...', '고민중...', '길을 찾는중...', '자료를 검토중...', '답변을 준비중...'];
-      let index = 0;
-      const interval = setInterval(() => {
-        index = (index + 1) % messages.length;
-        setLoadingMessage(messages[index]);
-      }, 1500);
-
-      return () => clearInterval(interval);
-    }, []);
-
     return (
       <div className={cn(
         "flex gap-3",
@@ -161,6 +222,37 @@ export function ChatBubble({
                 </Button>
               </AlertDescription>
             </Alert>
+          )}
+
+          {canCopy && (
+            <div className="flex justify-end mb-3 -mt-1">
+              <button
+                type="button"
+                onClick={handleCopy}
+                className={cn(
+                  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-colors focus:outline-none focus:ring-1 focus:ring-primary/40",
+                  isUser
+                    ? "bg-white/20 text-white hover:bg-white/30 focus:ring-white/60"
+                    : "bg-muted/40 text-muted-foreground hover:bg-muted/60"
+                )}
+              >
+                <Icon
+                  name={copyStatus === 'copied' ? 'check-circle' : copyStatus === 'error' ? 'alert-triangle' : 'copy'}
+                  size={12}
+                  className={cn(
+                    copyStatus === 'copied' && 'text-emerald-500',
+                    copyStatus === 'error' && 'text-destructive'
+                  )}
+                />
+                <span>
+                  {copyStatus === 'copied'
+                    ? '복사됨'
+                    : copyStatus === 'error'
+                    ? '복사 실패'
+                    : '복사'}
+                </span>
+              </button>
+            </div>
           )}
 
           <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert">
@@ -379,7 +471,7 @@ export function ChatBubble({
                   >
                     <div className="flex items-start gap-2">
                       <div className="text-xs font-mono text-muted-foreground mt-0.5 flex-shrink-0">
-                        [{index + 1}]
+                        [{index}]
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium text-foreground truncate group-hover:text-primary">
@@ -390,7 +482,7 @@ export function ChatBubble({
                           {source.similarity && ` • 유사도 ${(source.similarity * 100).toFixed(0)}%`}
                         </div>
                         <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {source.content.slice(0, 100)}...
+                          {source.content.replace(/<[^>]*>/g, '').slice(0, 100)}...
                         </div>
                       </div>
                       <Icon name="external-link" size={12} className="text-muted-foreground group-hover:text-primary flex-shrink-0 mt-0.5" />

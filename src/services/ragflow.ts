@@ -43,7 +43,29 @@ async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
-    const json = await res.json() as ApiResponse<any>;
+    const contentType = res.headers.get('content-type') || '';
+    const raw = await res.text();
+
+    if (!contentType.includes('application/json')) {
+      const snippet = raw.slice(0, 200);
+      throw new Error(`[RAGFlow] Unexpected response (${res.status} ${res.statusText}): ${snippet}`);
+    }
+
+    if (!raw.trim()) {
+      if (!res.ok) {
+        throw new Error(`[RAGFlow] Empty response (${res.status} ${res.statusText})`);
+      }
+      return undefined as T;
+    }
+
+    let json: ApiResponse<any>;
+    try {
+      json = JSON.parse(raw) as ApiResponse<any>;
+    } catch (parseError) {
+      const snippet = raw.slice(0, 200);
+      throw new Error(`[RAGFlow] Invalid JSON response: ${snippet}`);
+    }
+
     if (!res.ok || json.code !== 0) {
       throw new Error(json.message || `Request failed: ${res.status}`);
     }
@@ -306,99 +328,66 @@ export type RetrievalParams = {
 };
 
 export async function retrieveChunks(params: RetrievalParams): Promise<{ chunks: any[]; total: number }> {
+  console.log('🔄 RAGFlow 검색 요청 params:', JSON.stringify(params, null, 2));
+
   const data = await ragFetch<{ chunks: any[]; total: number }>(`/api/v1/retrieval`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
 
-  // 검색 결과 후처리: 핵심 키워드 우선순위 적용
-  const processedChunks = enhanceSearchResults(data?.chunks || [], params.question || '');
+  // 검색 결과 후처리: AI 점수 보존하며 메타데이터 필터링 및 최종 점수로 정렬
+  const processedChunks = enhanceSearchResults(data?.chunks || [], params.question || '', true);
 
   return { chunks: processedChunks, total: (data as any)?.total || 0 };
 }
 
-// 검색 결과 품질 향상을 위한 후처리 함수
-function enhanceSearchResults(chunks: any[], question: string): any[] {
+// AI 점수를 그대로 보존 (메타데이터 패널티 제거)
+function enhanceSearchResults(chunks: any[], question: string, shouldSort: boolean = false): any[] {
   if (!chunks.length) return chunks;
 
-  const questionKeywords = extractKeywords(question);
+  console.log('🔧 AI 검색 결과 처리 - 원본 점수 보존');
 
-  return chunks.map(chunk => {
-    let enhancedScore = chunk.similarity || chunk.score || 0;
+  // AI 점수를 그대로 사용 (패널티 없이)
+  const enhancedChunks = chunks.map((chunk, index) => {
+    const originalScore = chunk.similarity || chunk.score || 0;
 
-    // 1. 메타데이터 패널티 적용
-    const metadataPatterns = [
-      /배포책임자|담당자|팀장|수석|조사역/g,
-      /\d{4}\.\d{1,2}\.\d{1,2}/g, // 날짜 패턴
-      /보도[\s]*자료|공지사항|알림/g,
-      /\(\d{2}-\d{4}-\d{4}\)/g // 전화번호 패턴
-    ];
-
-    const content = chunk.content || '';
-    let metadataPenalty = 0;
-
-    metadataPatterns.forEach(pattern => {
-      const matches = content.match(pattern);
-      if (matches) {
-        metadataPenalty += matches.length * 0.1; // 메타데이터 매치당 0.1점 감점
-      }
+    console.log(`🔧 청크 ${index + 1}:`, {
+      original: originalScore,
+      final: originalScore,
+      ai_preserved: true
     });
-
-    // 2. 핵심 키워드 보너스 적용
-    let keywordBonus = 0;
-    questionKeywords.forEach(keyword => {
-      const keywordRegex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      const matches = content.match(keywordRegex);
-      if (matches) {
-        keywordBonus += matches.length * 0.2; // 핵심 키워드 매치당 0.2점 가산
-      }
-    });
-
-    // 3. important_keywords 보너스
-    const importantKeywords = chunk.important_keywords || [];
-    let importantBonus = 0;
-    if (Array.isArray(importantKeywords)) {
-      importantKeywords.forEach(keyword => {
-        questionKeywords.forEach(qKeyword => {
-          if (keyword.includes(qKeyword) || qKeyword.includes(keyword)) {
-            importantBonus += 0.3; // important_keywords 매치시 0.3점 가산
-          }
-        });
-      });
-    }
-
-    // 4. 제목/헤딩 보너스
-    let structureBonus = 0;
-    const headingPatterns = [/#.*|제\d+조|조\d+항|항목\d+/g];
-    headingPatterns.forEach(pattern => {
-      questionKeywords.forEach(keyword => {
-        const headingRegex = new RegExp(`${pattern.source}.*${keyword}`, 'gi');
-        if (content.match(headingRegex)) {
-          structureBonus += 0.25; // 제목/헤딩에 키워드 포함시 0.25점 가산
-        }
-      });
-    });
-
-    // 최종 점수 계산
-    enhancedScore = Math.max(0, Math.min(1,
-      enhancedScore + keywordBonus + importantBonus + structureBonus - metadataPenalty
-    ));
 
     return {
       ...chunk,
-      similarity: enhancedScore,
-      score: enhancedScore,
+      similarity: originalScore,
+      score: originalScore,
       _enhancement_details: {
-        original_score: chunk.similarity || chunk.score || 0,
-        keyword_bonus: keywordBonus,
-        important_bonus: importantBonus,
-        structure_bonus: structureBonus,
-        metadata_penalty: metadataPenalty,
-        final_score: enhancedScore
+        original_score: originalScore,
+        keyword_bonus: 0, // AI가 이미 처리함
+        important_bonus: 0, // AI가 이미 처리함
+        structure_bonus: 0, // AI가 이미 처리함
+        metadata_penalty: 0, // 패널티 제거
+        final_score: originalScore
       }
     };
-  }).sort((a, b) => (b.similarity || b.score || 0) - (a.similarity || a.score || 0));
+  });
+
+  // AI 원본 점수로 정렬
+  if (shouldSort) {
+    const sorted = enhancedChunks.sort((a, b) => {
+      const scoreA = a.similarity || a.score || 0;
+      const scoreB = b.similarity || b.score || 0;
+      console.log(`🔧 정렬: A=${scoreA.toFixed(3)}, B=${scoreB.toFixed(3)}, B-A=${(scoreB-scoreA).toFixed(3)}`);
+      return scoreB - scoreA; // 높은 점수가 먼저 (내림차순)
+    });
+    console.log('🔧 정렬 결과 상위 3개:', sorted.slice(0, 3).map(c => ({
+      score: c.similarity || c.score || 0,
+      content: (c.content || '').substring(0, 50)
+    })));
+    return sorted;
+  }
+  return enhancedChunks;
 }
 
 // converseOnce용 스트리밍 응답 처리
@@ -447,15 +436,43 @@ async function handleStreamingResponse(res: Response, question: string, handlers
               const data = JSON.parse(dataStr);
               console.log('RAGFlow converseOnce stream data:', data);
 
-              // RAGFlow 네이티브 포맷 처리
-              if (data.data && typeof data.data === 'object') {
-                if (data.data.answer) {
-                  lastResult = {
-                    answer: data.data.answer,
-                    reference: data.data.reference,
-                    session_id: data.data.session_id,
-                  };
-                  console.log('RAGFlow converseOnce updated result:', lastResult);
+              // RAGFlow 네이티브 포맷 처리 - 스트리밍 중 점진적 업데이트
+              if (data.code === 0 && data.data) {
+                // data.data가 true면 스트리밍 완료 신호
+                if (data.data === true) {
+                  console.log('RAGFlow 네이티브 스트리밍 완료 신호 수신');
+                  streamCompleted = true;
+                  continue; // 루프 계속하되 스트림 완료 표시
+                }
+
+                // 실제 데이터 업데이트
+                if (typeof data.data === 'object') {
+                  const newAnswer = data.data.answer;
+                  const newReference = data.data.reference;
+                  const newSessionId = data.data.session_id;
+
+                  // answer 업데이트 (전체 답변으로 교체)
+                  if (newAnswer !== undefined) {
+                    lastResult.answer = newAnswer;
+                  }
+
+                  // reference 업데이트 (있으면 교체)
+                  if (newReference) {
+                    lastResult.reference = newReference;
+                    console.log('📚 RAGFlow reference 수신:', newReference);
+                  }
+
+                  // session_id 업데이트
+                  if (newSessionId) {
+                    lastResult.session_id = newSessionId;
+                  }
+
+                  console.log('RAGFlow 네이티브 업데이트:', {
+                    answerLength: lastResult.answer?.length || 0,
+                    hasReference: !!lastResult.reference,
+                    chunkCount: lastResult.reference?.chunks?.length || 0
+                  });
+
                   handlers?.onMessage?.({ ...lastResult });
                 }
               }
@@ -477,8 +494,17 @@ async function handleStreamingResponse(res: Response, question: string, handlers
     console.log('RAGFlow converseOnce processing remaining buffer:', buffer);
   }
 
+  console.log('RAGFlow handleStreamingResponse 최종 결과:', {
+    hasAnswer: !!lastResult.answer,
+    answerLength: lastResult.answer?.length || 0,
+    hasReference: !!lastResult.reference,
+    chunkCount: lastResult.reference?.chunks?.length || 0,
+    sessionId: lastResult.session_id
+  });
+
   // 스트리밍 완료 후 검색 결과 후처리 적용
   if (lastResult.reference && lastResult.reference.chunks) {
+    console.log('📚 Reference 후처리 적용 중...');
     const enhancedReference = {
       ...lastResult.reference,
       chunks: enhanceSearchResults(lastResult.reference.chunks, question),
@@ -487,6 +513,16 @@ async function handleStreamingResponse(res: Response, question: string, handlers
     return {
       ...lastResult,
       reference: enhancedReference
+    };
+  }
+
+  // 최소한의 기본 결과 보장
+  if (!lastResult.answer && !lastResult.reference && !lastResult.session_id) {
+    console.warn('⚠️ lastResult가 완전히 비어있음 - 기본값 설정');
+    return {
+      answer: '',
+      reference: undefined,
+      session_id: undefined
     };
   }
 
@@ -566,7 +602,7 @@ export async function updateChat(chatId: string, body: { name?: string; dataset_
       actualDatasets: details.dataset_ids?.length || 0
     });
   } catch (e) {
-    console.warn('어시스턴트 상태 확인 실패:', e);
+    console.debug('어시스턴트 상태 확인 실패 (무시 가능):', e);
   }
 }
 
@@ -671,24 +707,28 @@ export async function converseOnce(chatId: string, body: { question: string; ses
   const timeoutId = setTimeout(() => controller.abort(), 300000); // 5분 타임아웃
 
   try {
+    const reqBody = {
+      question: body.question,
+      session_id: body.session_id,
+      stream: body.stream ?? false,
+      // 검색 품질 개선을 위한 파라미터 추가
+      ...(body.similarity_threshold !== undefined && { similarity_threshold: body.similarity_threshold }),
+      ...(body.vector_similarity_weight !== undefined && { vector_similarity_weight: body.vector_similarity_weight }),
+      ...(body.top_k !== undefined && { top_k: body.top_k }),
+      ...(body.temperature !== undefined && { temperature: body.temperature }),
+      ...(body.rerank_id && { rerank_id: body.rerank_id }),
+      ...(body.keyword !== undefined && { keyword: body.keyword })
+    };
+
+    console.log('🔄 RAGFlow API 요청 body:', JSON.stringify(reqBody, null, 2));
+
     const res = await fetch(new URL(fullPath, RAGFLOW_BASE_URL!).toString(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        question: body.question,
-        session_id: body.session_id,
-        stream: body.stream ?? false,
-        // 검색 품질 개선을 위한 파라미터 추가
-        ...(body.similarity_threshold !== undefined && { similarity_threshold: body.similarity_threshold }),
-        ...(body.vector_similarity_weight !== undefined && { vector_similarity_weight: body.vector_similarity_weight }),
-        ...(body.top_k !== undefined && { top_k: body.top_k }),
-        ...(body.temperature !== undefined && { temperature: body.temperature }),
-        ...(body.rerank_id && { rerank_id: body.rerank_id }),
-        ...(body.keyword !== undefined && { keyword: body.keyword })
-      }),
+      body: JSON.stringify(reqBody),
       signal: controller.signal,
     });
     clearTimeout(timeoutId);
@@ -703,7 +743,7 @@ export async function converseOnce(chatId: string, body: { question: string; ses
     }
 
     // 스트리밍 모드인 경우 스트림 처리
-    if (body.stream && ct.includes('text/plain')) {
+    if (body.stream && (ct.includes('text/plain') || ct.includes('text/event-stream'))) {
       return await handleStreamingResponse(res, body.question || '', handlers);
     }
 
@@ -954,7 +994,10 @@ export async function converseStream(
 
       for (const segment of segments) {
         const shouldStop = handleChunk(segment);
-        if (shouldStop) return lastResult;
+        if (shouldStop) {
+          console.log('RAGFlow 스트리밍 완료 - 최종 정리 중...');
+          break; // 루프만 중단하고 후처리 로직 실행
+        }
       }
     }
   } catch (streamError) {
@@ -965,7 +1008,9 @@ export async function converseStream(
   buffer += decoder.decode(new Uint8Array(), { stream: false });
   if (buffer) {
     const finished = handleChunk(buffer);
-    if (finished) return lastResult;
+    if (finished) {
+      console.log('RAGFlow 최종 버퍼 처리 완료');
+    }
   }
 
   // 스트리밍 완료 후 검색 결과 후처리 적용

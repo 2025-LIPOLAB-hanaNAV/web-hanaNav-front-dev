@@ -28,6 +28,8 @@ interface SourceReference {
   datasetName: string;
   chunkId?: string;
   similarity?: number;
+  documentId?: string;
+  highlightSnippet?: string;
 }
 
 export default function App() {
@@ -97,11 +99,11 @@ export default function App() {
 
   const handleSourceClick = (source: SourceReference) => {
     console.log('Source clicked:', source);
-    // Navigate to knowledge base with source highlighting
+    // Navigate to knowledge base without auto-filling search
     setKnowledgeBaseProps({
       initialDatasetId: source.datasetId,
       initialChunkId: source.chunkId,
-      initialHighlight: source.content.slice(0, 50) // Use first 50 chars as search term
+      initialHighlight: '' // Don't auto-fill search with document content
     });
     setCurrentView('documents');
   };

@@ -580,7 +580,7 @@ export async function evaluateWithOllama(
  */
 export async function generateRAGAnswer(
   question: string,
-  model: string = 'gemma3:27b'
+  model: string = 'gemma3:12b'
 ): Promise<{ answer: string; retrieved_doc_ids: string[] }> {
   try {
     const OLLAMA_BASE_URL = getOllamaBaseUrl();
@@ -1038,7 +1038,7 @@ ${question}
 // 백엔드 RAG 시스템과 연결된 종합 답변 생성 (MVP 완성 함수)
 export async function generateComprehensiveRAGAnswer(
   question: string,
-  model: string = 'gemma3:27b'
+  model: string = 'gemma3:12b'
 ): Promise<{ answer: string; retrieved_doc_ids: string[]; sources: string[] }> {
   try {
     console.log(`🌟 별돌이 종합 RAG 답변 생성 시작: ${question.substring(0, 50)}...`);
@@ -1192,7 +1192,7 @@ function postProcessAnswer(answer: string): string {
 export async function batchEvaluate(
   dataset: EvaluationRequest[],
   metrics: Array<'accuracy' | 'relevance' | 'readability' | 'policy_rejection' | 'privacy_exposure'>,
-  model: string = 'gemma3:27b',
+  model: string = 'gemma3:12b',
   onProgress?: (completed: number, total: number) => void
 ): Promise<EvaluationResult[]> {
   const results: EvaluationResult[] = [];
@@ -1779,7 +1779,6 @@ export async function getAvailableModels(): Promise<Array<{id: string, name: str
     console.warn('Failed to fetch available models:', error);
     // fallback to a small known-good list
     return [
-      { id: 'gemma3:27b', name: 'Gemma 3 27B' },
       { id: 'gemma3:12b', name: 'Gemma 3 12B' },
       { id: 'gemma3:8b', name: 'Gemma 3 8B' },
       { id: 'mistral:7b', name: 'Mistral 7B' }

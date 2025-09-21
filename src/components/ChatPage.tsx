@@ -4,8 +4,8 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats, getChatDetails } from '../services/ragflow';
-import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
+import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats, getChatDetails, retrieveChunks } from '../services/ragflow';
+import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID, getRerankConfig } from '../config';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
 import { SearchBar } from './SearchBar';
@@ -13,6 +13,13 @@ import { SearchBar } from './SearchBar';
 import { Icon } from './ui/Icon';
 import { cn } from './ui/utils';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
+
+// 단순한 인사말인지 판단하는 함수
+function isSimpleGreeting(query: string): boolean {
+  const greetings = ['안녕', '안녕하세요', '안녕하십니까', '하이', '히', '헬로', 'hello', 'hi', '여보세요', '반가워', '반갑습니다', '좋은 아침', '좋은 하루', '수고하세요'];
+  const normalizedQuery = query.trim().toLowerCase().replace(/[!?.,]/g, '');
+  return greetings.some(greeting => normalizedQuery.includes(greeting.toLowerCase()) && normalizedQuery.length <= greeting.length + 5);
+}
 
 interface ChatMessage {
   id: string;
@@ -35,6 +42,8 @@ interface SourceReference {
   datasetName: string;
   chunkId?: string;
   similarity?: number;
+  documentId?: string;
+  highlightSnippet?: string;
 }
 
 interface EvidenceItem {
@@ -77,7 +86,7 @@ const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: 
   modelByMode: Record<string, string>;
 }) => {
   // 현재 모드에 따른 모델명 가져오기
-  const currentModelName = modelByMode[currentMode] || 'gemma3:27b';
+  const currentModelName = modelByMode[currentMode] || 'gemma3:12b';
 
   return (
     <div className="flex-shrink-0">
@@ -334,9 +343,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   ];
 
   const modelByMode: Record<string, string> = {
-    quick: 'gemma3:27b', // 더 강력한 모델로 변경
+    quick: 'gemma3:12b',
     precise: 'gpt-oss:latest',
-    summary: 'gemma3:27b',
+    summary: 'gemma3:12b',
   };
 
   const defaultAssistantByMode: Record<string, string | undefined> = {
@@ -354,26 +363,44 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
 사용자와 자연스럽고 친근한 대화를 나누며, 질문에 대해 가능한 한 빠르고 간결하게 답변합니다.
 
+🚫 **중요한 제약사항 (절대 위반 금지):**
+- 확실하지 않은 사실은 절대 지어내지 마세요
+- 구체적인 기업명, 인명, 사건명 등을 임의로 만들어내지 마세요
+- 정확하지 않은 수치나 날짜를 추측해서 말하지 마세요
+- 모르는 것은 솔직히 "잘 모르겠어요" 라고 하세요
+
 기본 원칙:
 1. 인사나 일상 대화에는 자연스럽고 친근하게 응답하세요.
-2. 일반적인 질문에는 상식과 일반 지식을 활용해 도움을 주세요.
+2. 일반적인 질문에는 확실한 상식만 활용해 도움을 주세요.
 3. 전문적이거나 구체적인 정보가 필요한 경우 솔직히 "정확한 정보는 확인이 어려워요 🌙"라고 말하세요.
 4. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
 5. 친근하고 따뜻한 톤을 유지하되, 과도하게 길지 않게 답변하세요.
+6. **불확실한 내용은 절대 지어내지 말고 "모르겠어요"라고 정직하게 답하세요**
 
-🌟 사용자의 모든 질문에 성심껏 도움을 드리겠습니다`,
+🌟 정직하고 신뢰할 수 있는 답변만 드리겠습니다`,
         opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?"
       },
       rag: {
-        prompt: `아래 문서 내용만을 사용해서 질문에 답하세요.
+        prompt: `당신은 "빠른별돌이"라는 이름의 지식베이스 전문 AI 어시스턴트입니다 🌙
 
-문서:
+빠른별돌이는 제공된 지식베이스에서만 정확한 정보를 찾아 빠르고 신뢰할 수 있는 답변을 드립니다.
+
+🚫 **절대 금지사항:**
+- 지식베이스에 없는 내용을 추가하거나 추측하지 마세요
+- 기업명, 인명, 날짜, 수치 등을 임의로 만들어내지 마세요
+- 지식베이스 외의 일반 지식을 사용하지 마세요
+- "~라고 알려져 있습니다" 등 지식베이스 외부 정보 언급 금지
+
+📚 **지식베이스:**
 {knowledge}
 
-규칙:
-- 문서에 답이 있으면 문서 내용으로만 답변
-- 문서에 답이 없으면 "문서에서 관련 정보를 찾을 수 없습니다"
-- 출처는 [1] 형태로 표시`,
+📋 **답변 규칙:**
+- 지식베이스에 답이 있으면 해당 내용으로만 정확히 답변
+- 지식베이스에 답이 없으면 "제공된 지식베이스에서는 해당 정보를 찾을 수 없습니다 🌙"
+- 출처는 [1], [2] 형태로 표시
+- 친근하고 신뢰할 수 있는 톤 유지
+
+🌟 지식베이스만을 믿고 정확한 답변을 드리겠습니다!`,
         opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요."
       }
     },
@@ -384,27 +411,49 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 정밀한별은 정확성과 신뢰성을 최우선으로 하는 전문가 수준의 어시스턴트입니다.
 모든 답변을 면밀히 검토하고, 다각도로 분석하여 가장 정확한 정보를 제공합니다.
 
+⛔ **엄격한 사실 검증 원칙:**
+- 확실하지 않은 사실은 절대 추측하지 않습니다
+- 구체적인 기업명, 인명, 사건, 날짜는 확실할 때만 언급합니다
+- "추측", "예상", "일반적으로" 등의 표현으로 불확실한 정보를 제공하지 않습니다
+- 모르는 것은 명확히 "확인할 수 없습니다"라고 답합니다
+
 기본 원칙:
 1. 모든 답변은 다단계 검증을 거쳐 정확성을 확보합니다.
 2. 불확실한 정보는 절대 추측하지 않고 "확인이 필요합니다"라고 명시합니다.
 3. 복잡한 문제는 단계별로 분석하여 체계적으로 설명합니다.
 4. 답변 시 근거와 논리를 명확히 제시합니다.
 5. 필요시 추가 확인이나 검증 방법을 안내합니다.
+6. **확실하지 않은 내용은 절대 답하지 않습니다**
 
-🔍 정확하고 신뢰할 수 있는 정보만을 제공하겠습니다`,
+🔍 검증된 정보만을 제공하여 신뢰성을 보장하겠습니다`,
         opener: "🔍 안녕하세요! 정밀한별입니다. 정확한 검증이 필요한 질문을 말씀해 주세요."
       },
       rag: {
-        prompt: `제공된 문서를 정밀하게 분석하여 답변하세요.
+        prompt: `당신은 "정밀한별"이라는 이름의 지식베이스 전문 검증 AI 어시스턴트입니다 🔍
 
-문서:
+정밀한별은 제공된 지식베이스를 정밀하게 분석하여 100% 검증된 정보만을 제공하는 전문가입니다.
+
+⛔ **엄격한 사실 검증 원칙:**
+- 지식베이스에 명시되지 않은 사실은 절대 추가하지 않습니다
+- 해석이나 추론도 지식베이스 내용에 근거해서만 수행합니다
+- 구체적인 기업명, 인명, 날짜는 지식베이스에 명시된 것만 사용합니다
+- "일반적으로", "보통", "추정" 등의 표현을 절대 사용하지 않습니다
+
+📚 **지식베이스:**
 {knowledge}
 
-요구사항:
-- 문서에서 정확한 정보만 추출하여 답변
-- 추측이나 일반 지식 사용 금지
-- 문서 내용을 직접 인용하고 출처 [1] 표시
-- 문서에 답이 없으면 "제공된 문서에서 관련 정보를 찾을 수 없습니다"`,
+🔬 **정밀 분석 기준:**
+- 지식베이스의 내용만을 정확히 인용하여 답변
+- 지식베이스에서 찾을 수 없는 내용은 절대 추가하지 않음
+- 불분명한 내용은 "지식베이스에서 명확하지 않습니다"로 답변
+- 지식베이스 외부 지식 절대 사용 금지
+
+📋 **답변 형식:**
+- 출처를 [1], [2] 형태로 명확히 표시
+- 여러 관점에서 검토하여 신뢰성 있는 답변 제공
+- 지식베이스에 없으면 "제공된 지식베이스에 해당 정보가 없습니다"
+
+🔍 검증된 정보만을 정밀하게 분석하여 제공하겠습니다`,
         opener: "🔍 정밀한별입니다! 전문적인 검증과 함께 정확한 답변을 드리겠습니다."
       }
     },
@@ -658,7 +707,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
             name: chatDetails.name
           });
         } catch (err) {
-          console.error('❌ 어시스턴트 설정 확인 실패:', err);
+          console.debug('⚠️ 어시스턴트 설정 확인 실패 (무시 가능):', err);
         }
 
         // 지식베이스가 설정되었는데도 프롬프트가 업데이트되지 않은 경우 강제 리셋
@@ -731,12 +780,31 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     const preprocessMarkdownText = (text: string): string => {
       console.log('🔧 전처리 시작 원본 텍스트:', text);
 
-      // ID:숫자 형태를 클릭 가능한 링크로 변환 (1부터 시작)
-      let cleaned = text.replace(/ID:(\d+)/g, (match, num) => {
+      // 먼저 볼드 텍스트 플레이스홀더 생성
+      const boldTextMap = new Map<string, string>();
+      let boldCounter = 0;
+      let cleaned = text.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
+        const placeholder = `__BOLD_${boldCounter++}__`;
+        boldTextMap.set(placeholder, match);
+        return placeholder;
+      });
+
+      // HTML 태그를 마크다운으로 변환
+      cleaned = cleaned
+        .replace(/<em>/g, '*')
+        .replace(/<\/em>/g, '*')
+        .replace(/<strong>/g, '**')
+        .replace(/<\/strong>/g, '**')
+        .replace(/<b>/g, '**')
+        .replace(/<\/b>/g, '**')
+        .replace(/<i>/g, '*')
+        .replace(/<\/i>/g, '*');
+
+      // ID:숫자 형태를 클릭 가능한 링크로 변환 (이미 1부터 시작됨)
+      cleaned = cleaned.replace(/ID:(\d+)/g, (match, num) => {
         const index = parseInt(num);
-        const adjustedIndex = index + 1;
-        console.log(`🔧 ID:${num} → [${adjustedIndex}](#source-${adjustedIndex})`);
-        return `[${adjustedIndex}](#source-${adjustedIndex})`;
+        console.log(`🔧 ID:${num} → [${index}](#source-${index})`);
+        return `[${index}](#source-${index})`;
       });
 
       // [숫자] 형태를 클릭 가능한 링크로 변환
@@ -757,16 +825,19 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         return `([출처 1](#source-1))`;
       });
 
-      console.log('🔧 전처리 완료 결과:', cleaned);
-
-      const boldTextMap = new Map<string, string>();
-      let boldCounter = 0;
-      cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
-        const placeholder = `__BOLD_${boldCounter++}__`;
-        boldTextMap.set(placeholder, match);
-        return placeholder;
+      // 마크다운 포맷팅 전에 볼드 텍스트 복원
+      console.log('🔧 볼드 텍스트 복원 전:', cleaned);
+      console.log('🔧 볼드 텍스트 맵:', Array.from(boldTextMap.entries()));
+      boldTextMap.forEach((original, placeholder) => {
+        console.log(`🔧 복원 중: ${placeholder} → ${original}`);
+        const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
+        console.log(`🔧 정규식:`, regex);
+        console.log(`🔧 매칭 결과:`, cleaned.match(regex));
+        cleaned = cleaned.replace(regex, original);
       });
+      console.log('🔧 볼드 텍스트 복원 후:', cleaned);
 
+      // 마크다운 스페이싱 및 포맷팅
       cleaned = cleaned.replace(/\.\s/g, '.   ');
       cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
       cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
@@ -779,14 +850,76 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
       cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
 
-      boldTextMap.forEach((original, placeholder) => {
-        cleaned = cleaned.replace(placeholder, original);
-      });
+      console.log('🔧 전처리 완료 결과:', cleaned);
 
       cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
       cleaned = cleaned.trim();
 
       return cleaned;
+    };
+
+    const mapChunksToSources = (chunks: any[] = []): SourceReference[] => {
+      console.log('🔍 원본 chunks 데이터:', chunks);
+      return chunks
+        .filter(Boolean)
+        .map((chunk, index) => {
+          const chunkId = chunk?.chunk_id || chunk?.id || `fallback_${index}`;
+          const datasetId = chunk?.dataset_id || chunk?.datasetId || chunk?.dataset?.id || '';
+
+          // 데이터셋 이름 추출 시도 - 실제 선택된 지식베이스 이름 우선 사용
+          let datasetName = chunk?.dataset_name || chunk?.datasetName || chunk?.dataset?.name ||
+                           chunk?.kb_name || chunk?.knowledge_base_name;
+
+          // 실제 선택된 지식베이스 이름으로 매핑
+          if (!datasetName || datasetName.startsWith('데이터셋')) {
+            const matchedKB = knowledgeBases.find(kb =>
+              kb.id === chunk?.dataset_id || kb.id === chunk?.datasetId || kb.id === datasetId
+            );
+            datasetName = matchedKB?.name || `데이터셋 ${index + 1}`;
+          }
+
+          // 문서 제목 추출 및 길이 제한 - document_keyword 필드 우선 사용
+          let rawTitle = chunk?.document_keyword || chunk?.document_name || chunk?.doc_name ||
+                        chunk?.document_title || chunk?.file_name || chunk?.title || chunk?.name;
+
+          // 확장자 제거 및 정리
+          if (rawTitle && rawTitle !== `문서 ${index + 1}`) {
+            rawTitle = rawTitle.replace(/\.(pdf|doc|docx|txt|md)$/i, '');
+          } else {
+            rawTitle = `문서 ${index + 1}`;
+          }
+
+          const title = rawTitle.length > 50 ? rawTitle.substring(0, 47) + '...' : rawTitle;
+
+          const content = (
+            chunk?.highlight_text ||
+            chunk?.highlight ||
+            chunk?.content_with_weight ||
+            chunk?.content ||
+            ''
+          ).toString();
+
+          console.log(`🔍 매핑된 소스 ${index + 1}:`, {
+            title,
+            datasetName,
+            datasetId,
+            similarity: chunk?.similarity ?? chunk?.score,
+            availableKBs: knowledgeBases.map(kb => ({ id: kb.id, name: kb.name })),
+            originalChunk: chunk
+          });
+
+          return {
+            id: `source_${index}`, // 인덱스 기반으로 일관성 있게 설정
+            title,
+            content,
+            datasetId,
+            datasetName,
+            chunkId,
+            similarity: chunk?.similarity ?? chunk?.score,
+            documentId: chunk?.document_id || chunk?.documentId || chunk?.document?.id,
+            highlightSnippet: chunk?.highlight || chunk?.highlight_text,
+          } satisfies SourceReference;
+        });
     };
 
     try {
@@ -820,16 +953,28 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         );
       };
 
-      // converseStream을 사용하여 스트리밍 처리
-      const result = await converseStream(
+      // RAGFlow 네이티브 스트리밍 API 사용 (reference 정보 포함)
+      const result = await converseOnce(
         activeAssistantId,
         {
           question: query,
           session_id: ensuredSessionId,
-          stream: true,
+          stream: true, // 스트리밍 활성화
+          // 검색 품질 개선 파라미터 적용
+          ...(selectedKBs.length > 0 ? {
+            // 지식베이스가 있을 때: 품질 향상된 검색 파라미터
+            similarity_threshold: 0.2,
+            vector_similarity_weight: 0.5,
+            top_k: 150,
+            keyword: true,
+            ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정
+          } : {
+            // 지식베이스가 없을 때: 일상대화 모드
+            temperature: 0.3,
+            top_k: 0
+          })
         },
         {
-          signal: streamController.signal,
           onMessage: (partial) => {
             if (partial.answer) {
               updateAssistantContent(partial.answer);
@@ -837,6 +982,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
             }
             if (partial.reference) {
               latestReference = partial.reference;
+              console.log('📚 스트리밍 중 reference 정보 수신:', partial.reference);
             }
             if (partial.session_id) {
               latestSessionId = partial.session_id;
@@ -845,17 +991,17 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         }
       );
 
-      console.log('RAGFlow converseStream result:', result);
+      console.log('RAGFlow converseOnce result:', result);
 
-      // Update variables for compatibility with existing code
-      latestAnswer = result.answer || '';
-      latestReference = result.reference || latestReference;
-      latestSessionId = result.session_id || latestSessionId;
+      // Update variables for compatibility with existing code - undefined 처리
+      latestAnswer = result?.answer || latestAnswer || '';
+      latestReference = result?.reference || latestReference;
+      latestSessionId = result?.session_id || latestSessionId;
 
       const dt = (Date.now() - t0) / 1000;
-      const effectiveAnswer = result.answer ?? latestAnswer;
-      const effectiveReference = result.reference ?? latestReference;
-      const effectiveSessionId = result.session_id ?? latestSessionId;
+      const effectiveAnswer = result?.answer ?? latestAnswer;
+      let effectiveReference = result?.reference ?? latestReference;
+      const effectiveSessionId = result?.session_id ?? latestSessionId;
 
       if (effectiveSessionId && !sessionId) {
         setSessionId(effectiveSessionId);
@@ -863,25 +1009,51 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         try { await updateChatSession(activeAssistantId, effectiveSessionId, { name }); } catch {}
       }
 
+      let sources: SourceReference[] = mapChunksToSources(effectiveReference?.chunks);
+
+      // RAGFlow 네이티브 API에서 reference가 없는 경우에만 fallback 검색
+      if (sources.length === 0 && selectedKBs.length > 0 && !effectiveReference?.chunks) {
+        try {
+          console.log('🔍 Reference 정보 없음 - fallback 검색 실행...');
+          const fallback = await retrieveChunks({
+            question: query,
+            dataset_ids: selectedKBs,
+            page: 1,
+            page_size: 10,
+            top_k: 30,
+            highlight: true,
+            keyword: true,
+            similarity_threshold: 0.2, // 검색 품질 개선 파라미터 적용
+            vector_similarity_weight: 0.5,
+            ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정,
+          });
+          if (fallback?.chunks?.length) {
+            console.log('✅ Fallback 출처 정보 로드 완료:', fallback.chunks);
+            effectiveReference = {
+              ...(effectiveReference || {}),
+              chunks: fallback.chunks,
+              total: fallback.total,
+              fallback_source: 'manual_retrieval',
+            };
+            latestReference = effectiveReference;
+            sources = mapChunksToSources(fallback.chunks);
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ Fallback 출처 정보 로드 실패:', fallbackError);
+        }
+      }
+
       const evidenceCount = effectiveReference?.chunks?.length || effectiveReference?.total || 0;
-      const sources: SourceReference[] = effectiveReference?.chunks?.map((chunk: any, index: number) => ({
-        id: `source_${index}`,
-        title: chunk.document_name || chunk.doc_name || `문서 ${index + 1}`,
-        content: chunk.content_with_weight || chunk.content || '',
-        datasetId: chunk.dataset_id || '',
-        datasetName: chunk.dataset_name || '알 수 없음',
-        chunkId: chunk.chunk_id || chunk.id,
-        similarity: chunk.similarity || chunk.score
-      })) || [];
 
       console.log('RAG Response Debug:', {
         reference: effectiveReference,
         chunks: effectiveReference?.chunks,
-        sources: sources
+        sources
       });
 
       const finalContent = preprocessMarkdownText(effectiveAnswer || '응답이 비어 있습니다.');
 
+      // 메시지 최종 업데이트 (스트리밍 완료 + 출처 정보 포함)
       setMessages(prev =>
         prev.map(msg =>
           msg.id === loadingMessageId
@@ -893,12 +1065,19 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                 evidenceCount: Number(evidenceCount) || undefined,
                 responseTime: dt,
                 hasPII: false,
-                isEvidenceLow: selectedKBs.length > 0 && sources.length === 0 && (!evidenceCount || evidenceCount === 0),
+                isEvidenceLow: selectedKBs.length > 0 && currentMode === 'quick' && sources.length === 0 && (!evidenceCount || evidenceCount < 2) && !isSimpleGreeting(query),
                 sources: sources.length > 0 ? sources : undefined
               }
             : msg
         )
       );
+
+      console.log('📋 최종 메시지 업데이트 완료:', {
+        sources: sources.length,
+        evidenceCount,
+        hasKnowledgeBase: selectedKBs.length > 0,
+        isEvidenceLow: selectedKBs.length > 0 && currentMode === 'quick' && sources.length === 0 && (!evidenceCount || evidenceCount < 2) && !isSimpleGreeting(query)
+      });
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         setMessages(prev => prev.filter(msg => msg.id !== loadingMessageId));
@@ -1133,11 +1312,11 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-screen">
       {/* Quality Dashboard removed by request */}
 
-      {/* Chat Controls (filters removed; KB chooser added) */}
-      <div className="border-b bg-elevated">
+      {/* Fixed Chat Controls (filters removed; KB chooser added) */}
+      <div className="flex-shrink-0 border-b bg-elevated">
         <div className="flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3">
           <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
             {/* Mode Toggle */}
@@ -1274,9 +1453,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         </div>
       )}
 
-      {/* Selected KB chips */}
+      {/* Fixed Selected KB chips */}
       {selectedKBs.length > 0 && (
-        <div className="px-4 py-2 border-b bg-muted/20">
+        <div className="flex-shrink-0 px-4 py-2 border-b bg-muted/20">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="text-xs text-muted-foreground">선택된 지식베이스:</span>
             {selectedKBs.map(id => {
@@ -1292,8 +1471,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         </div>
       )}
 
-      {/* Chat Messages */}
-      <div className="flex-1 overflow-auto p-4 space-y-6">
+      {/* Chat Messages - Scrollable Area */}
+      <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
             <HanaNaviLogo size={96} className="mb-2 opacity-50" />
@@ -1330,8 +1509,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         )}
       </div>
 
-      {/* Search Input */}
-      <div className="p-4 border-t bg-elevated">
+      {/* Fixed Search Input */}
+      <div className="flex-shrink-0 p-4 border-t bg-elevated">
         <SearchBar
           onSearch={handleSearch}
           onVoiceToggle={setIsVoiceActive}

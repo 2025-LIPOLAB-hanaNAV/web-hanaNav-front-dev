@@ -72,7 +72,7 @@ const METRIC_OPTIONS: Array<{ id: MetricType; name: string; description: string;
   },
   {
     id: 'privacy_exposure',
-    name: '개인정보 노출률',
+    name: '개인정보 노출 방지율',
     description: '불필요한 개인정보 방지, 마스킹/비식별화 처리',
     weight: 'no_unnecessary_pii(0.6) + proper_masking(0.4)'
   }

@@ -7,6 +7,9 @@
 [![Vite](https://img.shields.io/badge/Vite-6.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.14-38B2AC.svg)](https://tailwindcss.com/)
 
+## 미리보기
+[✨ 버셀에서 바로 확인하기](https://web-hana-nav-front-dev.vercel.app/)
+
 ## 📋 목차
 
 - [✨ 주요 기능](#-주요-기능)

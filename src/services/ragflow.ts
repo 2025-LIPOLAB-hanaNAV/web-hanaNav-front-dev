@@ -504,7 +504,7 @@ export async function converseStream(
 
   // Use OpenAI-compatible endpoint for streaming
   const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
-  const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
+  const fullPath = USE_PROXY ? path.replace('/api/', '/api/ragflow/') : path;
   const url = new URL(fullPath, RAGFLOW_BASE_URL);
 
   // 기본 타임아웃 컨트롤러 생성 (10분 - 스트리밍은 더 길게)

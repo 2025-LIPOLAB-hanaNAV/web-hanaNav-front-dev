@@ -7,7 +7,7 @@
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.14-38B2AC.svg)](https://tailwindcss.com/)
 
 ## 미리보기
-[![버셀에서 바로 확인하기](https://web-hana-nav-front-dev.vercel.app/)]
+[✨ 버셀에서 바로 확인하기](https://web-hana-nav-front-dev.vercel.app/)
 
 ## 📋 목차
 

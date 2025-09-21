@@ -150,7 +150,7 @@ export function SearchBar({
             </div>
           )}
           
-          <div className="flex items-center justify-around bg-[rgba(0,0,0,0)] rounded-[0px] w-full max-w-7xl min-w-[800px] m-[0px] px-4 py-0">
+          <div className="flex items-center gap-2 sm:gap-3 w-full px-3 sm:px-4 py-0">
             <Icon name="search" size={24} className="text-muted-foreground flex-shrink-0" />
             
             <Textarea
@@ -159,14 +159,14 @@ export function SearchBar({
               onKeyDown={handleKeyDown}
               placeholder={placeholder}
               className={cn(
-                "border-0 bg-transparent text-xl px-0 shadow-none focus-visible:ring-0 font-light placeholder:text-muted-foreground/60 placeholder:font-light py-2 transition-all duration-300 resize-none min-h-[2.5rem] max-h-32",
+                "flex-1 border-0 bg-transparent text-xl px-3 shadow-none focus-visible:ring-0 font-light placeholder:text-muted-foreground/60 placeholder:font-light py-2 transition-all duration-300 resize-none min-h-[2.5rem] max-h-32",
                 isMagicActive && "text-primary glow-text"
               )}
               disabled={isLoading || isMagicActive}
               rows={1}
             />
             
-            <div className="flex items-center gap-3 flex-shrink-0">
+            <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
               <input
                 ref={fileInputRef}
                 type="file"
@@ -181,9 +181,10 @@ export function SearchBar({
                 variant="ghost"
                 size="sm"
                 onClick={() => fileInputRef.current?.click()}
-                className="text-muted-foreground hover:text-foreground p-3"
+                className="text-muted-foreground hover:text-foreground p-2 sm:p-3 h-auto"
+                title="파일 첨부"
               >
-                <Icon name="file-text" size={20} />
+                <Icon name="file-text" size={18} className="sm:w-5 sm:h-5" />
               </Button>
               
 
@@ -193,11 +194,14 @@ export function SearchBar({
                 size="sm"
                 disabled={(!query.trim() && attachedFiles.length === 0) || isLoading || isMagicActive}
                 className={cn(
-                  "button-primary text-white font-medium px-6 py-2 border-0 ml-2 transition-all duration-300 text-sm",
+                  "button-primary text-white font-medium px-3 sm:px-6 py-2 border-0 transition-all duration-300 text-sm",
                   isMagicActive && "animate-pulse shadow-lg shadow-primary/50"
                 )}
               >
-                {isMagicActive ? '🔮 마법 시전 중...' : isLoading ? '검색 중...' : '검색'}
+                <span className="hidden sm:inline">
+                  {isMagicActive ? '🔮 마법 시전 중...' : isLoading ? '검색 중...' : '검색'}
+                </span>
+                <Icon name="search" size={16} className="sm:hidden" />
               </Button>
             </div>
           </div>

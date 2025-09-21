@@ -8,7 +8,8 @@
       "Bash(npm install)",
       "Bash(pkill:*)",
       "Bash(rm:*)",
-      "Bash(ping:*)"
+      "Bash(ping:*)",
+      "Bash(chmod:*)"
     ],
     "deny": [],
     "ask": []

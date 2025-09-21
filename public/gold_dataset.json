@@ -1,0 +1,209 @@
+[
+  {
+    "question_id": "Q1",
+    "question": "중고거래를 통해 입금을 받았는데 계좌가 정지되었대. 지급정지를 해제할 수 있어?",
+    "gold_doc_ids": ["명의인의 이의제기"],
+    "required_facts": [
+      {
+        "label": "evidence_listing",
+        "text": "본인 계정 판매 게시글 제출",
+        "aliases": ["판매글", "판매 게시글 사본"],
+        "must": true
+      },
+      {
+        "label": "evidence_chat",
+        "text": "상대방과의 대화 내역 제출",
+        "aliases": ["채팅 내역", "메시지 내역"],
+        "must": false
+      },
+      {
+        "label": "evidence_shipping",
+        "text": "발송(운송장 등) 증빙 제출",
+        "aliases": ["운송장", "배송증빙"],
+        "must": false
+      },
+      {
+        "label": "evidence_timestamp",
+        "text": "모든 증빙에는 날짜/시간 포함",
+        "aliases": ["타임스탬프", "일시 포함"],
+        "must": true
+      },
+      {
+        "label": "branch_intake_scan",
+        "text": "영업점 접수 시 신청서 확인·스캔 보관",
+        "aliases": ["신청서 누락 확인 후 스캔"],
+        "must": false
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "증빙 없이 즉시 해제 가능"
+      },
+      {
+        "text": "동의서만으로 해제 가능"
+      }
+    ],
+    "intent_summary": "중고거래 입금으로 지급정지된 계좌의 해제 가능 여부와 이의제기 절차/증빙 안내",
+    "on_topic_keywords": ["지급정지 해제 절차", "이의제기", "증빙 제출", "판매 게시글", "대화 내역", "운송장"],
+    "off_topic_indicators": ["대출", "연차", "해외송금 수수료", "HR 규정"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 400
+    },
+    "redundancy_indicators": ["같은 문구 재언급"]
+  },
+  {
+    "question_id": "Q2",
+    "question": "명의인의 이의제기가 승인되면 바로 계좌를 이용할 수 있어?",
+    "gold_doc_ids": ["이의제기 승인 후 절차"],
+    "required_facts": [
+      {
+        "label": "first_step_unblock",
+        "text": "1차적으로 하나은행에서 등록된 비대면거래제한이 해제됩니다",
+        "must": true
+      },
+      {
+        "label": "waiting_period",
+        "text": "2~3 영업일 후 계좌는 전부지급정지에서 일부지급정지로 전환",
+        "must": true
+      },
+      {
+        "label": "final_release",
+        "text": "2달 간 피해자의 '부당이득반환청구 소송'서류가 접수되지 않으면 자동으로 지급정지가 해제",
+        "must": true
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "승인 즉시 모든 거래 가능"
+      },
+      {
+        "text": "추가 대기 기간 없음"
+      }
+    ],
+    "intent_summary": "이의제기 승인 후 계좌 이용 재개까지의 단계별 절차와 소요 기간 안내",
+    "on_topic_keywords": ["이의제기 승인", "비대면거래제한", "일부지급정지", "부당이득반환청구"],
+    "off_topic_indicators": ["신규 계좌 개설", "카드 발급", "대출 상품"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 350
+    },
+    "redundancy_indicators": ["영업일 반복 언급"]
+  },
+  {
+    "question_id": "Q3",
+    "question": "전자금융거래제한자인지 아닌지는 어떻게 알아?",
+    "gold_doc_ids": ["고객주의사고관리"],
+    "required_facts": [
+      {
+        "label": "check_screen",
+        "text": "계정단말화면 0072 고객주의사고관리 화면을 참고하면 됩니다",
+        "must": true
+      },
+      {
+        "label": "our_bank_code",
+        "text": "266 전자금융거래제한(당행 사기예금주) + 267 등록된 경우, 당행 전기통신금융사기 연루 계좌로 인해 '비대면거래 지급제한자'",
+        "must": true
+      },
+      {
+        "label": "other_bank_code",
+        "text": "267 전자금융거래제한(연합회 사기예금주)만 있는 경우, 타행 전기통신금융사기 연루 계좌로 인해 '비대면거래 지급제한자'",
+        "must": true
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "고객에게 직접 알려주면 안됨"
+      },
+      {
+        "text": "확인 방법이 없음"
+      }
+    ],
+    "intent_summary": "전자금융거래제한자 여부를 확인하는 시스템 조회 방법과 코드별 의미 안내",
+    "on_topic_keywords": ["전자금융거래제한", "0072", "고객주의사고관리", "266", "267"],
+    "off_topic_indicators": ["계좌 개설", "대출 심사", "카드 발급"],
+    "concise_hint": {
+      "require_tldr_or_bullets": false,
+      "max_core_chars": 300
+    },
+    "redundancy_indicators": ["전자금융거래제한 반복"]
+  },
+  {
+    "question_id": "Q4",
+    "question": "전자금융거래제한자가 가능한 업무가 뭐야?",
+    "gold_doc_ids": ["전자금융거래제한 업무"],
+    "required_facts": [
+      {
+        "label": "restricted_services",
+        "text": "자동화기기 지급거래, 인터넷뱅킹 지급거래, 스마트폰뱅킹 지급거래, 폰뱅킹 지급거래가 제한됩니다",
+        "must": true
+      },
+      {
+        "label": "card_usage_allowed",
+        "text": "본인계좌 사고 신고 전 발급된 체크카드 가맹점 사용은 가능",
+        "must": true
+      },
+      {
+        "label": "card_restrictions",
+        "text": "사고신고 이후 체크카드 추가발급 불가 및 체크카드 현금인출 기능 불가",
+        "must": true
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "모든 거래가 완전히 차단됨"
+      },
+      {
+        "text": "체크카드도 전혀 사용 불가"
+      }
+    ],
+    "intent_summary": "전자금융거래제한자의 제한 업무와 가능한 업무 구분 안내",
+    "on_topic_keywords": ["전자금융거래제한", "체크카드", "가맹점 사용", "현금인출"],
+    "off_topic_indicators": ["신용카드", "대출", "예금"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 250
+    },
+    "redundancy_indicators": ["체크카드 반복 설명"]
+  },
+  {
+    "question_id": "Q5",
+    "question": "보이스피싱 신고는 어디에 해야해?",
+    "gold_doc_ids": ["보이스피싱 대응 매뉴얼"],
+    "required_facts": [
+      {
+        "label": "police_report",
+        "text": "112 또는 가까운 경찰서 신고",
+        "aliases": ["112신고", "경찰신고"],
+        "must": true
+      },
+      {
+        "label": "bank_report",
+        "text": "은행 고객센터 신고",
+        "must": true
+      },
+      {
+        "label": "fss_report",
+        "text": "금융감독원 불법사금융신고센터 1332",
+        "aliases": ["금감원 신고", "1332"],
+        "must": false
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "신고하지 않아도 된다"
+      },
+      {
+        "text": "혼자 해결할 수 있다"
+      }
+    ],
+    "intent_summary": "보이스피싱 피해 시 신고 절차와 신고처 안내",
+    "on_topic_keywords": ["보이스피싱", "신고", "112", "경찰", "금융감독원"],
+    "off_topic_indicators": ["대출", "투자", "환율"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 200
+    },
+    "redundancy_indicators": ["신고 반복 강조"]
+  }
+]

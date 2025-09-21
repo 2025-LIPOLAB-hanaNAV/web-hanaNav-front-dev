@@ -479,9 +479,18 @@
     }
   }
 
-  body {
-    background: var(--background);
+  html {
+    background-image: var(--background);
+    background-color: var(--background-solid, var(--background));
+    background-repeat: no-repeat;
+    background-size: cover;
+    background-attachment: fixed;
     color: var(--foreground);
+  }
+
+  body {
+    background: transparent;
+    color: inherit;
     font-feature-settings: "cv01", "cv03", "cv04", "cv11";
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;

@@ -1,0 +1,241 @@
+# Claude Code 지침: 하나내비 RAG 평가 시스템 통합
+
+## 📋 프로젝트 개요
+
+기존 하나내비 React 프로젝트에 LLM-as-a-Judge 기반 RAG 품질 평가 시스템을 통합하세요.
+
+## 🎯 핵심 요구사항
+
+### 기존 프로젝트 구조 분석
+- **프로젝트 위치**: `web-hanaNav-front-dev/`
+- **기술 스택**: React 18 + TypeScript + Vite + Tailwind CSS + Radix UI
+- **기존 서비스들**: `services/ragflow.ts`, `services/ollama.ts`
+- **현재 뷰 시스템**: `home`, `chat`, `library`, `documents`, `laaj` (상태 기반 라우팅)
+
+### 구현할 기능
+1. **실시간 RAG 평가**: 채팅 중 봇 응답에 대한 품질 평가
+2. **평가 대시보드**: 전체 평가 결과 모니터링 및 트렌드 분석
+3. **기존 구조 활용**: 새로운 API 서버 없이 기존 Ollama 서비스 활용
+
+## 🔧 구현 단계별 지침
+
+### 1단계: 기본 파일 구조 생성
+
+```bash
+# 새로 생성할 파일들
+src/types/evaluation.ts
+src/services/evaluation.ts  
+src/hooks/useEvaluation.ts
+src/components/EvaluationDashboard.tsx
+src/components/EvaluationGuide.tsx
+```
+
+### 2단계: 핵심 평가 로직 구현
+
+**파일: `src/services/evaluation.ts`**
+- 기존 `services/ollama.ts`의 구조를 참고하여 평가 서비스 구현
+- 4가지 평가 지표: accuracy(40%), relevance(25%), readability(25%), pii(10%)
+- Ollama를 통한 평가 프롬프트 실행 및 JSON 응답 파싱
+- localStorage를 활용한 평가 결과 저장
+
+**핵심 메서드**:
+```typescript
+- evaluateWithOllama(question: string, answer: string, sources: any[]): Promise<EvaluationResult>
+- createEvaluationPrompt(question: string, answer: string, sources: any[]): string
+- parseEvaluationResponse(response: string): { metrics: EvaluationMetrics; overall_score: number }
+- saveEvaluationResult(result: EvaluationResult): void
+- getEvaluationHistory(): EvaluationResult[]
+```
+
+### 3단계: ChatBubble 컴포넌트 수정
+
+**파일: `src/components/ChatBubble.tsx`**
+- 기존 ChatBubble 컴포넌트에 평가 위젯 추가
+- 봇 응답(`role === 'assistant'`)에만 평가 버튼 표시
+- 평가 중 로딩 상태 및 결과 표시 UI
+- 접을 수 있는 상세 평가 결과 (Collapsible 활용)
+
+**추가할 props**:
+```typescript
+interface ChatBubbleProps {
+  // 기존 props...
+  onEvaluationResult?: (result: EvaluationResult) => void;
+  previousMessage?: any; // 이전 사용자 메시지 (질문)
+}
+```
+
+### 4단계: 평가 대시보드 구현
+
+**파일: `src/components/EvaluationDashboard.tsx`**
+- Tabs 컴포넌트 활용: 트렌드, 기록, 상세분석
+- Recharts 라이브러리로 성능 트렌드 시각화 (LineChart, BarChart)
+- 평가 기록 목록 및 상세 정보 표시
+- 데이터 내보내기 및 삭제 기능
+
+### 5단계: App.tsx 수정
+
+**수정 사항**:
+1. `currentView` state에 `'evaluation'` 추가
+2. `renderCurrentView()` 함수에 evaluation case 추가
+3. 평가 결과 저장을 위한 state 추가
+4. ChatPage에 `onEvaluationResult` prop 전달
+
+### 6단계: AppShell 네비게이션 수정
+
+**파일: `src/components/AppShell.tsx`**
+- 네비게이션 메뉴에 RAG 평가 항목 추가
+- 아이콘: `BarChart3` (lucide-react)
+- 기존 메뉴 스타일과 일관성 유지
+
+## 📐 코딩 가이드라인
+
+### TypeScript 타입 정의
+```typescript
+// src/types/evaluation.ts 에 정의할 인터페이스들
+
+interface EvaluationMetrics {
+  accuracy: MetricDetail;
+  relevance: MetricDetail;
+  readability: MetricDetail;
+  pii: MetricDetail;
+}
+
+interface MetricDetail {
+  [key: string]: number;
+  weighted_[metric_name]: number;
+  why: Record<string, string>;
+}
+
+interface EvaluationResult {
+  id: string;
+  timestamp: string;
+  question: string;
+  answer: string;
+  sources?: any[];
+  metrics: EvaluationMetrics;
+  overall_score: number;
+  assistant_id: string;
+  session_id: string;
+}
+```
+
+### UI 컴포넌트 활용
+- **기존 컴포넌트 활용**: Card, Button, Badge, Tabs, Switch (Radix UI)
+- **차트**: Recharts의 LineChart, BarChart 활용 (이미 설치됨)
+- **아이콘**: lucide-react의 BarChart3, TrendingUp, Target, Eye, Shield, Zap
+- **스타일**: 기존 Tailwind CSS 클래스 패턴 따르기
+
+### 평가 프롬프트 설계
+```typescript
+// Ollama에 전송할 평가 프롬프트 템플릿
+const evaluationPrompt = `
+당신은 엄격한 RAG 시스템 평가자입니다. 다음 질문과 답변을 4가지 지표로 평가해주세요.
+
+질문: ${question}
+답변: ${answer}
+검색된 문서 ID: ${retrievedDocIds.join(', ')}
+
+평가 기준:
+1. 정확도 (accuracy): 답변의 정확성과 사실성
+2. 관련성 (relevance): 질문과 답변의 관련성  
+3. 가독성 (readability): 답변의 명확성과 간결성
+4. 개인정보 보호 (pii): 개인정보 노출 방지
+
+JSON 형식으로 응답:
+{
+  "accuracy": { ... },
+  "relevance": { ... },
+  "readability": { ... },
+  "pii": { ... }
+}
+`;
+```
+
+## 🚫 주의사항
+
+### 지켜야 할 제약사항
+1. **기존 코드 최소 수정**: 기존 컴포넌트의 핵심 로직은 건드리지 않기
+2. **네이밍 일관성**: 기존 프로젝트의 네이밍 컨벤션 따르기
+3. **의존성 추가 금지**: 새로운 npm 패키지 설치하지 않기 (기존 것만 활용)
+4. **localStorage 키**: `hananav_evaluations` 형식으로 충돌 방지
+
+### 환경 변수 설정
+```bash
+# .env.local에 추가
+VITE_ENABLE_RAG_EVALUATION=true
+VITE_OLLAMA_MODEL=gemma3:12b
+```
+
+## 🧪 테스트 시나리오
+
+구현 완료 후 다음 시나리오로 테스트:
+
+1. **기본 평가 테스트**:
+   - 홈에서 "보이스피싱 신고 방법은?" 질문
+   - RAGFlow 응답 확인
+   - ChatBubble의 "답변 품질 평가" 버튼 클릭
+   - 평가 결과 표시 확인
+
+2. **대시보드 테스트**:
+   - 네비게이션에서 "RAG 평가" 메뉴 클릭
+   - 평가 기록 및 트렌드 차트 확인
+   - 데이터 내보내기 기능 테스트
+
+3. **연속 평가 테스트**:
+   - 여러 질문 연속 진행
+   - localStorage에 누적 저장 확인
+   - 트렌드 그래프 업데이트 확인
+
+## 🎯 성공 기준
+
+구현이 성공적으로 완료되면:
+- ✅ 기존 하나내비 UI/UX와 완전히 통합
+- ✅ 실시간 RAG 응답 품질 평가 가능
+- ✅ 시각적 성능 트렌드 모니터링 가능
+- ✅ 기존 기능에 영향 없음
+- ✅ 평가 데이터 영구 저장 및 관리
+
+## 💡 구현 팁
+
+1. **단계적 구현**: services/evaluation.ts → ChatBubble 수정 → 대시보드 순서
+2. **기존 패턴 활용**: ollama.ts의 API 호출 패턴, ChatBubble의 UI 패턴 참고
+3. **에러 처리**: Ollama 응답 파싱 실패 시 기본값 반환
+4. **성능 최적화**: 평가 결과 캐싱, 불필요한 리렌더링 방지
+
+필수 보완 (꼭 반영 추천)
+
+정답 누수 방지(Reference Leakage)
+
+Judge 프롬프트에 원문 컨텐츠를 넣지 말고, retrievedDocIds(파일명/ID) + 간단한 스니펫/요약만 전달.
+
+KB가 gold/test를 인덱싱하지 않도록 파이프라인에서 폴더/접두사 차단.
+
+JSON 파싱 견고화
+
+Ollama가 종종 JSON 외 텍스트를 섞습니다. 최소 JSON 추출기(첫 {~마지막 } 범위)로 감싸고, 실패 시 안전 기본값 리턴. (아래 코드 제공)
+
+모델 타임아웃·재시도·폴백
+
+AbortController로 15s 타임아웃, 1회 재시도, 그래도 실패 시 로컬 휴리스틱(간이 Judge) 점수. (예: 필수 키워드 매칭 0/1)
+
+캐싱 & 중복 평가 방지
+
+같은 (session_id, assistant_id, question_hash, answer_hash)면 localStorage에서 재사용.
+
+키: hananav_evaluations:v1.
+
+가중합 산식 고정 & 로그
+
+overall = 0.4*accuracy + 0.25*relevance + 0.25*readability + 0.1*pii
+
+각 metric 0~1 실수, 소수 3자리로 클램프. 평가 입력/출력을 함께 audit trail에 저장(운영 탭서 다운로드 가능).
+
+PII 안전 가드
+
+Judge 프롬프트에 민감정보가 그대로 들어가지 않게 마스킹(전화/계좌/주민번호 패턴 *** 치환).
+
+평가 탭에서 “민감 원문 표시 토글(기본 OFF)” 제공.
+
+Feature Flag로 완전 차단 가능
+
+VITE_ENABLE_RAG_EVALUATION !== 'true'면 모든 UI 비활성 + 서비스 함수 no-op.

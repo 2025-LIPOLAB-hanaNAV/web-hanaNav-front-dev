@@ -1,0 +1,106 @@
+[
+  {
+    "question_id": "q001",
+    "question": "육아휴직은 몇 개월까지 가능한가요?",
+    "answer": "육아휴직은 최대 1년(12개월)까지 가능합니다. 근속 6개월 이상의 정규직 직원이 신청할 수 있으며, 휴직 시작일 30일 전까지 인사팀에 신청서를 제출하시면 됩니다.",
+    "retrieved_doc_ids": ["hr_policy_001", "hr_policy_003"],
+    "doc_ids": ["hr_policy_001", "hr_policy_002"],
+    "required_facts": [
+      {
+        "label": "휴직기간",
+        "text": "최대 1년",
+        "must": true,
+        "aliases": ["12개월", "1년"]
+      },
+      {
+        "label": "자격요건",
+        "text": "근속 6개월 이상",
+        "must": true
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "2년까지 가능",
+        "aliases": ["24개월"]
+      }
+    ],
+    "intent_summary": "육아휴직 기간에 대한 정확한 정보 제공",
+    "on_topic_keywords": ["육아휴직", "휴직기간", "근속"],
+    "off_topic_indicators": ["연차", "병가", "출산휴가"],
+    "concise_hint": {
+      "require_tldr_or_bullets": false,
+      "max_core_chars": 200
+    },
+    "redundancy_indicators": ["반복", "중복"]
+  },
+  {
+    "question_id": "q002",
+    "question": "대출 금리는 어떻게 결정되나요?",
+    "answer": "대출 금리는 기준금리와 가산금리를 합산하여 결정됩니다. 고객님의 신용등급, 담보 가치, 대출 기간 등을 종합적으로 고려하여 개별적으로 산정됩니다. 자세한 금리 조건은 영업점에서 상담받으시기 바랍니다.",
+    "retrieved_doc_ids": ["loan_policy_001", "rate_guide_001"],
+    "doc_ids": ["loan_policy_001", "rate_guide_001"],
+    "required_facts": [
+      {
+        "label": "금리구성",
+        "text": "기준금리 + 가산금리",
+        "must": true
+      },
+      {
+        "label": "고려요소",
+        "text": "신용등급, 담보가치",
+        "must": true,
+        "aliases": ["신용도", "담보"]
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "고정금리만 제공",
+        "aliases": ["변동금리 없음"]
+      }
+    ],
+    "intent_summary": "대출 금리 결정 방식에 대한 설명",
+    "on_topic_keywords": ["대출", "금리", "기준금리", "가산금리"],
+    "off_topic_indicators": ["예금", "적금", "투자"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 150
+    }
+  },
+  {
+    "question_id": "q003",
+    "question": "보이스피싱 피해를 당한 고객이 내점했을 때 어떻게 대응해야 하나요?",
+    "answer": "보이스피싱 피해 고객 내점 시 다음과 같이 대응하시기 바랍니다. 1) 즉시 거래 중단 및 계좌 지급정지 조치 2) 고객 신분 확인 및 피해 상황 청취 3) 경찰서 신고 안내 및 신고확인서 제출 요청 4) 금감원 신고센터(1332) 신고 안내 5) 피해금액 환급 절차 안내. 긴급상황 시에는 즉시 본부 리스크관리팀에 보고하시기 바랍니다.",
+    "retrieved_doc_ids": ["risk_manual_001", "fraud_response_001"],
+    "doc_ids": ["risk_manual_001", "fraud_response_001"],
+    "required_facts": [
+      {
+        "label": "즉시조치",
+        "text": "거래 중단 및 계좌 지급정지",
+        "must": true
+      },
+      {
+        "label": "신고안내",
+        "text": "경찰서 신고",
+        "must": true
+      },
+      {
+        "label": "금감원신고",
+        "text": "1332",
+        "must": true
+      }
+    ],
+    "forbidden_claims": [
+      {
+        "text": "개인정보 김철수",
+        "aliases": ["고객명 공개"]
+      }
+    ],
+    "intent_summary": "보이스피싱 피해 고객 대응 절차",
+    "on_topic_keywords": ["보이스피싱", "피해", "대응", "신고"],
+    "off_topic_indicators": ["일반상담", "예금개설"],
+    "concise_hint": {
+      "require_tldr_or_bullets": true,
+      "max_core_chars": 300
+    }
+  }
+]

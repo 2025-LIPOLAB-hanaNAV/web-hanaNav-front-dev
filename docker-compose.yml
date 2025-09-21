@@ -1,0 +1,101 @@
+version: '3.8'
+
+services:
+  # Ollama LLM 서버
+  ollama:
+    image: ollama/ollama:latest
+    container_name: hananav-ollama
+    restart: unless-stopped
+    ports:
+      - "11434:11434"
+    volumes:
+      # 모델 데이터 영구 저장
+      - ollama_data:/root/.ollama
+      # 초기 모델 다운로드 스크립트
+      - ./scripts/init-models.sh:/init-models.sh:ro
+    environment:
+      - OLLAMA_KEEP_ALIVE=24h
+      - OLLAMA_HOST=0.0.0.0
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:11434/api/tags"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 1m
+    networks:
+      - hananav-network
+    deploy:
+      resources:
+        reservations:
+          # GPU 지원이 있다면 활성화
+          # devices:
+          #   - driver: nvidia
+          #     count: 1
+          #     capabilities: [gpu]
+          memory: 4G
+        limits:
+          memory: 8G
+
+  # 하나내비 웹 애플리케이션
+  hananav-web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: hananav-web
+    restart: unless-stopped
+    ports:
+      - "3000:80"
+    environment:
+      # Ollama 서버 연결 설정
+      - VITE_OLLAMA_URL=http://ollama:11434
+      - VITE_ENABLE_RAG_EVALUATION=true
+      - VITE_JUDGE_MODEL=gemma3:12b
+      - VITE_RAG_MODEL=gemma3:12b
+    depends_on:
+      ollama:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - hananav-network
+    deploy:
+      resources:
+        reservations:
+          memory: 256M
+        limits:
+          memory: 512M
+
+  # 모델 초기화 서비스 (한 번만 실행)
+  model-setup:
+    image: ollama/ollama:latest
+    container_name: hananav-model-setup
+    volumes:
+      - ollama_data:/root/.ollama
+      - ./scripts/setup-models.sh:/setup-models.sh:ro
+    command: ["/bin/bash", "/setup-models.sh"]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    networks:
+      - hananav-network
+    restart: "no"
+
+volumes:
+  # Ollama 모델 데이터 영구 저장
+  ollama_data:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ./data/ollama
+
+networks:
+  hananav-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16

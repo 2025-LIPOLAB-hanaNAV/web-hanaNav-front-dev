@@ -9,7 +9,8 @@ import {
   Filter, Settings, Home, ShieldCheck, PiggyBank, CreditCard, Coins,
   Route, Users, Navigation, Loader2, RefreshCw, Database, MapPin,
   BookmarkCheck, MoreHorizontal, ExternalLink, Eye, Clock, X,
-  ShieldAlert, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Menu
+  ShieldAlert, ChevronLeft, ChevronRight, ChevronDown, ChevronUp, Menu,
+  Play, List, Cpu, Trash2
 } from "lucide-react";
 
 const ICONS = {
@@ -60,6 +61,10 @@ const ICONS = {
   "chevron-down": ChevronDown,
   "chevron-up": ChevronUp,
   "menu": Menu,
+  "play": Play,
+  "list": List,
+  "cpu": Cpu,
+  "trash": Trash2,
 } as const;
 
 export type IconName = keyof typeof ICONS;

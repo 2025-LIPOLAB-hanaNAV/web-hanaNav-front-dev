@@ -9,6 +9,8 @@ import { Button } from './ui/button';
 import { Icon } from './ui/Icon';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { cn } from './ui/utils';
+import { EvaluationWidget } from './EvaluationWidget';
+import type { EvaluationResult } from '../types/evaluation';
 
 interface SourceReference {
   id: string;
@@ -33,6 +35,13 @@ interface ChatBubbleProps {
   isEvidenceLow?: boolean;
   sources?: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
+  onSwitchToPrecise?: () => void;
+  // 평가 관련 props
+  previousMessage?: string; // 이전 사용자 메시지 (질문)
+  assistantId?: string;
+  sessionId?: string;
+  retrievedDocIds?: string[];
+  onEvaluationResult?: (result: EvaluationResult) => void;
 }
 
 export function ChatBubble({
@@ -47,7 +56,14 @@ export function ChatBubble({
   hasPII = false,
   isEvidenceLow = false,
   sources,
-  onSourceClick
+  onSourceClick,
+  onSwitchToPrecise,
+  // 평가 관련 props
+  previousMessage,
+  assistantId,
+  sessionId,
+  retrievedDocIds,
+  onEvaluationResult
 }: ChatBubbleProps) {
   const isUser = type === 'user';
   const isSystem = type === 'system';
@@ -149,7 +165,12 @@ export function ChatBubble({
               <Icon name="alert-triangle" size={16} />
               <AlertDescription className="text-sm flex items-center justify-between">
                 <span>근거가 부족해요. 정밀검증 모드로 전환할까요?</span>
-                <Button size="sm" variant="outline" className="ml-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="ml-2"
+                  onClick={onSwitchToPrecise}
+                >
                   전환
                 </Button>
               </AlertDescription>
@@ -185,6 +206,96 @@ export function ChatBubble({
                   >
                     {children}
                   </pre>
+                ),
+                // 테이블 스타일링 개선
+                table: ({ children, ...props }) => (
+                  <div className="overflow-x-auto my-4">
+                    <table
+                      className="min-w-full divide-y divide-border border border-border rounded-md"
+                      {...props}
+                    >
+                      {children}
+                    </table>
+                  </div>
+                ),
+                thead: ({ children, ...props }) => (
+                  <thead className="bg-muted" {...props}>
+                    {children}
+                  </thead>
+                ),
+                tbody: ({ children, ...props }) => (
+                  <tbody className="bg-background divide-y divide-border" {...props}>
+                    {children}
+                  </tbody>
+                ),
+                tr: ({ children, ...props }) => (
+                  <tr className="hover:bg-muted/50" {...props}>
+                    {children}
+                  </tr>
+                ),
+                th: ({ children, ...props }) => (
+                  <th
+                    className="px-3 py-2 text-left text-xs font-medium text-muted-foreground uppercase tracking-wider"
+                    {...props}
+                  >
+                    {children}
+                  </th>
+                ),
+                td: ({ children, ...props }) => (
+                  <td
+                    className="px-3 py-2 text-sm text-foreground whitespace-nowrap"
+                    {...props}
+                  >
+                    {children}
+                  </td>
+                ),
+                // 헤딩 스타일링
+                h1: ({ children, ...props }) => (
+                  <h1 className="text-lg font-bold mt-4 mb-2 text-foreground" {...props}>
+                    {children}
+                  </h1>
+                ),
+                h2: ({ children, ...props }) => (
+                  <h2 className="text-base font-semibold mt-3 mb-2 text-foreground" {...props}>
+                    {children}
+                  </h2>
+                ),
+                h3: ({ children, ...props }) => (
+                  <h3 className="text-sm font-medium mt-2 mb-1 text-foreground" {...props}>
+                    {children}
+                  </h3>
+                ),
+                // 리스트 스타일링
+                ul: ({ children, ...props }) => (
+                  <ul className="list-disc list-inside my-2 space-y-1" {...props}>
+                    {children}
+                  </ul>
+                ),
+                ol: ({ children, ...props }) => (
+                  <ol className="list-decimal list-inside my-2 space-y-1" {...props}>
+                    {children}
+                  </ol>
+                ),
+                // 강조 텍스트
+                strong: ({ children, ...props }) => (
+                  <strong className="font-semibold text-foreground" {...props}>
+                    {children}
+                  </strong>
+                ),
+                em: ({ children, ...props }) => (
+                  <em className="italic text-muted-foreground" {...props}>
+                    {children}
+                  </em>
+                ),
+                // 구분선
+                hr: ({ ...props }) => (
+                  <hr className="my-4 border-border" {...props} />
+                ),
+                // 블록 인용
+                blockquote: ({ children, ...props }) => (
+                  <blockquote className="border-l-4 border-primary/30 pl-4 my-2 italic text-muted-foreground" {...props}>
+                    {children}
+                  </blockquote>
                 )
               }}
             >
@@ -261,6 +372,24 @@ export function ChatBubble({
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Evaluation Widget - Assistant 메시지에만 표시 */}
+          {!isUser && type === 'assistant' && state === 'success' && previousMessage && assistantId && sessionId && (
+            <EvaluationWidget
+              question={previousMessage}
+              answer={content}
+              assistantId={assistantId}
+              sessionId={sessionId}
+              sources={sources?.map(s => ({
+                id: s.id,
+                title: s.title,
+                content: s.content,
+                datasetName: s.datasetName
+              }))}
+              retrievedDocIds={retrievedDocIds}
+              onEvaluationResult={onEvaluationResult}
+            />
           )}
         </Card>
         

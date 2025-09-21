@@ -34,7 +34,7 @@ export function AppShell({
   // - 홈: 첫 채팅 화면으로 이동 (기존 'chat' 뷰 사용)
   // - 라이브러리: 채팅 기록 리스트(임시로 기존 SavedDestinations 화면 매핑)
   // - 지식베이스: 문서/벡터 DB 관리 (기존 'documents')
-  // - LaaJ: LLM 평가 화면 (임시로 운영자 콘솔 매핑)
+  // - LaaJ: LLM 평가 화면 (운영자 콘솔 매핑)
   const navigationItems = [
     { id: 'home', label: '집으로', icon: 'home' },
     { id: 'library', label: '라이브러리', icon: 'book-open' },
@@ -43,7 +43,7 @@ export function AppShell({
   ];
 
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="min-h-screen flex flex-col bg-background">
       {/* Header - Enhanced */}
       <header className="flex items-center justify-between px-6 py-4 border-b bg-elevated/95 backdrop-blur-lg shadow-lg">
         <div className="flex items-center gap-4">
@@ -88,7 +88,7 @@ export function AppShell({
         </div>
       </header>
 
-      <div className="flex flex-1 overflow-hidden">
+      <div className="flex flex-1 min-h-0">
         {/* Left Navigation */}
         <nav className={cn(
           "border-r bg-elevated transition-all duration-300",
@@ -220,9 +220,9 @@ export function AppShell({
         )}
 
         {/* Main Content Area */}
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-1 min-h-0">
           <main className={cn(
-            "flex-1 overflow-hidden",
+            "flex-1",
             showRightPanel && "mr-80 hidden lg:block"
           )}>
             {children}

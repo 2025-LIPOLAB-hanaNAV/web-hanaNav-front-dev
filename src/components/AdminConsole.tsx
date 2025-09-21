@@ -24,7 +24,7 @@ import {
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
-import { EvaluationPanel } from './EvaluationPanel';
+import { EvaluationDashboard } from './EvaluationDashboard';
 
 interface KnowledgeConnector {
   id: string;
@@ -617,7 +617,7 @@ export function AdminConsole() {
 
             {/* Quality Assessment Tab */}
             <TabsContent value="quality-assessment" className="space-y-6">
-              <EvaluationPanel />
+              <EvaluationDashboard />
             </TabsContent>
 
           </div>

@@ -3,7 +3,6 @@ import { Card } from './ui/card';
 import { Button } from './ui/button';
 import { Badge } from './ui/badge';
 import { Progress } from './ui/progress';
-import { Input } from './ui/input';
 import { Checkbox } from './ui/checkbox';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from './ui/table';
 import { Alert, AlertDescription } from './ui/alert';
@@ -17,7 +16,8 @@ import {
   XCircle,
   Clock,
   AlertTriangle,
-  FileText
+  FileText,
+  RefreshCw
 } from 'lucide-react';
 import { cn } from './ui/utils';
 import { batchEvaluate, EvaluationRequest, EvaluationResult, getAvailableModels } from '../services/ollama';
@@ -31,127 +31,60 @@ interface EvaluationStats {
   passRate: number;
 }
 
-export function EvaluationPanel() {
-  // localStorage에서 상태 복원
-  const [dataset, setDataset] = useState<EvaluationRequest[]>(() => {
-    try {
-      const saved = localStorage.getItem('hana_evaluation_dataset');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [results, setResults] = useState<EvaluationResult[]>(() => {
-    try {
-      const saved = localStorage.getItem('hana_evaluation_results');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(() => {
-    try {
-      const saved = localStorage.getItem('hana_evaluation_metrics');
-      return saved ? JSON.parse(saved) : ['accuracy'];
-    } catch {
-      return ['accuracy'];
-    }
-  });
-
+export function EvaluationPanelNew() {
+  // 기본 상태
+  const [dataset, setDataset] = useState<EvaluationRequest[]>([]);
+  const [results, setResults] = useState<EvaluationResult[]>([]);
+  const [selectedMetrics, setSelectedMetrics] = useState<MetricType[]>(['accuracy']);
   const [evaluating, setEvaluating] = useState(false);
   const [progress, setProgress] = useState({ completed: 0, total: 0 });
-
-  const [model, setModel] = useState(() => {
-    try {
-      const saved = localStorage.getItem('hana_evaluation_model');
-      return saved || 'llama3.2:latest';
-    } catch {
-      return 'llama3.2:latest';
-    }
-  });
-
+  const [model, setModel] = useState('llama3.2:latest');
   const [availableModels, setAvailableModels] = useState<Array<{id: string, name: string}>>([
     { id: 'llama3.2:latest', name: 'Llama 3.2' },
     { id: 'gemma2:latest', name: 'Gemma 2' },
     { id: 'phi3:latest', name: 'Phi-3' },
     { id: 'qwen2.5:latest', name: 'Qwen 2.5' }
   ]);
-
   const [error, setError] = useState<string | null>(null);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 상태 변경 시 localStorage에 저장
-  useEffect(() => {
-    try {
-      localStorage.setItem('hana_evaluation_dataset', JSON.stringify(dataset));
-    } catch (e) {
-      console.warn('Failed to save dataset to localStorage:', e);
-    }
-  }, [dataset]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('hana_evaluation_results', JSON.stringify(results));
-    } catch (e) {
-      console.warn('Failed to save results to localStorage:', e);
-    }
-  }, [results]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('hana_evaluation_metrics', JSON.stringify(selectedMetrics));
-    } catch (e) {
-      console.warn('Failed to save metrics to localStorage:', e);
-    }
-  }, [selectedMetrics]);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('hana_evaluation_model', model);
-    } catch (e) {
-      console.warn('Failed to save model to localStorage:', e);
-    }
-  }, [model]);
-
-  // 사용 가능한 모델 목록 로드
-  useEffect(() => {
-    const loadModels = async () => {
-      try {
-        console.log('🔄 Loading available models...');
-        const models = await getAvailableModels();
-        console.log('✅ Loaded models:', models);
-
-        if (models.length > 0) {
-          setAvailableModels(models);
-          // 기본 모델이 사용 가능한 모델 목록에 없으면 첫 번째 모델로 설정
-          if (!models.find(m => m.id === model)) {
-            console.log(`🔧 Switching model from ${model} to ${models[0].id}`);
-            setModel(models[0].id);
-          }
-        }
-      } catch (error) {
-        console.warn('❌ Failed to load available models:', error);
-        // 실패해도 기본 모델 목록은 유지
-      }
-    };
-
-    // 컴포넌트 마운트 시에만 실행
-    if (availableModels.length <= 4) { // 기본 fallback 모델 개수
-      loadModels();
-    }
-  }, []); // 의존성 배열에서 model 제거
-
+  // 평가 지표 정의
   const metrics = [
     { id: 'accuracy' as MetricType, name: '정확도', description: '문서 검색과 사실 정확성' },
     { id: 'relevance' as MetricType, name: '관련성', description: '질문 의도와 주제 일치성' },
     { id: 'readability' as MetricType, name: '가독성', description: '간결성과 중복 없음' },
-    { id: 'privacy' as MetricType, name: '개인정보노출률', description: '개인정보 보호 준수' }
+    { id: 'privacy' as MetricType, name: '개인정보보호', description: '개인정보 노출 방지' }
   ];
 
+  // 모델 목록 로드
+  const loadAvailableModels = async () => {
+    setLoadingModels(true);
+    try {
+      console.log('🔄 Loading available models...');
+      const models = await getAvailableModels();
+      if (models.length > 0) {
+        setAvailableModels(models);
+        // 현재 선택된 모델이 없으면 첫 번째 모델 선택
+        if (!models.find(m => m.id === model)) {
+          setModel(models[0].id);
+        }
+      }
+    } catch (error) {
+      console.warn('❌ Failed to load models:', error);
+      setError('모델 목록을 불러올 수 없습니다. Ollama 서버 연결을 확인하세요.');
+    } finally {
+      setLoadingModels(false);
+    }
+  };
 
+  // 컴포넌트 마운트 시 모델 로드
+  useEffect(() => {
+    loadAvailableModels();
+  }, []);
+
+  // 파일 업로드 처리
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -164,6 +97,7 @@ export function EvaluationPanel() {
           setDataset(jsonData);
           setResults([]);
           setError(null);
+          console.log('✅ Dataset loaded:', jsonData.length, 'items');
         } else {
           setError('JSON 파일은 배열 형태여야 합니다.');
         }
@@ -174,6 +108,7 @@ export function EvaluationPanel() {
     reader.readAsText(file);
   };
 
+  // 평가 지표 토글
   const toggleMetric = (metric: MetricType) => {
     setSelectedMetrics(prev =>
       prev.includes(metric)
@@ -182,6 +117,7 @@ export function EvaluationPanel() {
     );
   };
 
+  // 평가 실행
   const startEvaluation = async () => {
     if (dataset.length === 0) {
       setError('먼저 데이터셋을 업로드하세요.');
@@ -216,41 +152,35 @@ export function EvaluationPanel() {
       );
 
       console.log('✅ 모든 평가 완료:', evaluationResults);
-
       setResults(evaluationResults);
 
       // 오류가 있는 평가 건 수 계산
       const errorCount = evaluationResults.filter(r => r.error).length;
       if (errorCount > 0) {
-        setError(`평가 완료되었으나 ${errorCount}개 항목에서 오류가 발생했습니다. 결과를 확인해주세요.`);
+        setError(`평가 완료되었으나 ${errorCount}개 항목에서 오류가 발생했습니다.`);
       }
 
     } catch (err) {
       console.error('❌ 배치 평가 실패:', err);
       const errorMessage = err instanceof Error ? err.message : '평가 중 오류가 발생했습니다.';
-
-      // 일반적인 오류에 대한 해결 방법 제시
-      if (errorMessage.includes('연결 실패') || errorMessage.includes('fetch')) {
-        setError(`${errorMessage}\n\n해결 방법:\n1. Ollama가 설치되어 있는지 확인\n2. Ollama 서버가 실행 중인지 확인 (ollama serve)\n3. 방화벽 설정 확인\n4. 환경변수 REACT_APP_OLLAMA_URL 설정 확인`);
-      } else {
-        setError(errorMessage);
-      }
+      setError(errorMessage);
     } finally {
       setEvaluating(false);
     }
   };
 
+  // 결과 내보내기
   const exportResults = () => {
     if (results.length === 0) return;
 
     const csvData = [
-      ['question_id', 'metric', 'score', 'details', 'error'],
+      ['question_id', 'metric', 'score', 'status', 'details'],
       ...results.map(r => [
         r.question_id,
         r.metric,
         r.score.toString(),
-        JSON.stringify(r.details),
-        r.error || ''
+        r.error ? 'error' : 'success',
+        r.error || JSON.stringify(r.details)
       ])
     ];
 
@@ -262,31 +192,12 @@ export function EvaluationPanel() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `evaluation_results_${new Date().toISOString().slice(0, 19)}.csv`;
+    a.download = `llm_evaluation_${new Date().toISOString().slice(0, 19)}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
 
-  const clearAllData = () => {
-    if (window.confirm('모든 평가 데이터를 삭제하시겠습니까?')) {
-      setDataset([]);
-      setResults([]);
-      setSelectedMetrics(['accuracy']);
-      setModel('llama3.2:latest');
-      setError(null);
-
-      // localStorage에서도 삭제
-      try {
-        localStorage.removeItem('hana_evaluation_dataset');
-        localStorage.removeItem('hana_evaluation_results');
-        localStorage.removeItem('hana_evaluation_metrics');
-        localStorage.removeItem('hana_evaluation_model');
-      } catch (e) {
-        console.warn('Failed to clear localStorage:', e);
-      }
-    }
-  };
-
+  // 통계 계산
   const getStats = (): EvaluationStats[] => {
     const statsByMetric = new Map<string, { scores: number[], errors: number }>();
 
@@ -326,12 +237,12 @@ export function EvaluationPanel() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">LLM 품질 평가</h2>
+          <h2 className="text-2xl font-bold">LLM as a Judge</h2>
           <p className="text-muted-foreground">Ollama 모델을 사용한 자동 품질 평가</p>
         </div>
         <Badge variant="outline" className="gap-1">
           <BarChart3 size={14} />
-          평가 시스템
+          품질 평가 시스템
         </Badge>
       </div>
 
@@ -379,7 +290,20 @@ export function EvaluationPanel() {
           {/* Model Selection */}
           <Card className="p-6">
             <div className="space-y-4">
-              <h3 className="text-lg font-semibold">모델 선택</h3>
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold">모델 선택</h3>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadAvailableModels}
+                  disabled={loadingModels}
+                  className="gap-1"
+                >
+                  <RefreshCw className={cn("h-3 w-3", loadingModels && "animate-spin")} />
+                  새로고침
+                </Button>
+              </div>
+
               <div className="grid grid-cols-2 gap-2">
                 {availableModels.map(m => (
                   <Button
@@ -392,8 +316,9 @@ export function EvaluationPanel() {
                   </Button>
                 ))}
               </div>
-              <div className="text-xs text-muted-foreground mt-2 space-y-1">
-                <div>선택된 모델: <code className="bg-muted px-1 rounded">{model}</code></div>
+
+              <div className="text-xs text-muted-foreground">
+                선택된 모델: <code className="bg-muted px-1 rounded">{model}</code>
               </div>
             </div>
           </Card>
@@ -474,7 +399,7 @@ export function EvaluationPanel() {
               {stats.map(stat => (
                 <Card key={stat.metric} className="p-4">
                   <div className="space-y-2">
-                    <div className="text-sm font-medium">{stat.metric}</div>
+                    <div className="text-sm font-medium capitalize">{stat.metric}</div>
                     <div className="text-2xl font-bold">
                       {(stat.avgScore * 100).toFixed(1)}%
                     </div>
@@ -492,15 +417,10 @@ export function EvaluationPanel() {
             <Card className="p-6">
               <div className="flex items-center justify-between mb-4">
                 <h3 className="text-lg font-semibold">평가 결과</h3>
-                <div className="flex gap-2">
-                  <Button onClick={exportResults} className="gap-2">
-                    <Download size={16} />
-                    CSV 다운로드
-                  </Button>
-                  <Button onClick={clearAllData} variant="outline" className="gap-2">
-                    초기화
-                  </Button>
-                </div>
+                <Button onClick={exportResults} className="gap-2">
+                  <Download size={16} />
+                  CSV 다운로드
+                </Button>
               </div>
 
               <div className="overflow-x-auto">
@@ -515,7 +435,7 @@ export function EvaluationPanel() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {results.map((result, idx) => (
+                    {results.slice(0, 50).map((result, idx) => (
                       <TableRow key={idx}>
                         <TableCell className="font-mono text-sm">
                           {result.question_id}
@@ -524,14 +444,12 @@ export function EvaluationPanel() {
                           <Badge variant="outline">{result.metric}</Badge>
                         </TableCell>
                         <TableCell>
-                          <div className="flex items-center gap-2">
-                            <span className={cn(
-                              "font-medium",
-                              result.score >= 0.7 ? "text-green-600" : "text-red-600"
-                            )}>
-                              {(result.score * 100).toFixed(1)}%
-                            </span>
-                          </div>
+                          <span className={cn(
+                            "font-medium",
+                            result.score >= 0.7 ? "text-green-600" : "text-red-600"
+                          )}>
+                            {(result.score * 100).toFixed(1)}%
+                          </span>
                         </TableCell>
                         <TableCell>
                           {result.error ? (
@@ -544,12 +462,8 @@ export function EvaluationPanel() {
                               variant={result.score >= 0.7 ? "default" : "secondary"}
                               className="gap-1"
                             >
-                              {result.score >= 0.7 ? (
-                                <CheckCircle size={12} />
-                              ) : (
-                                <XCircle size={12} />
-                              )}
-                              {result.score >= 0.7 ? "통과" : "미통과"}
+                              <CheckCircle size={12} />
+                              완료
                             </Badge>
                           )}
                         </TableCell>
@@ -559,7 +473,7 @@ export function EvaluationPanel() {
                               세부사항 보기
                             </summary>
                             <pre className="mt-2 text-xs bg-muted p-2 rounded overflow-x-auto">
-                              {JSON.stringify(result.details, null, 2)}
+                              {result.error || JSON.stringify(result.details, null, 2)}
                             </pre>
                           </details>
                         </TableCell>
@@ -568,6 +482,12 @@ export function EvaluationPanel() {
                   </TableBody>
                 </Table>
               </div>
+
+              {results.length > 50 && (
+                <div className="mt-4 text-sm text-muted-foreground text-center">
+                  처음 50개 결과만 표시됩니다. 전체 결과는 CSV로 다운로드하세요.
+                </div>
+              )}
             </Card>
           )}
 
@@ -575,6 +495,9 @@ export function EvaluationPanel() {
             <Card className="p-8 text-center">
               <BarChart3 className="mx-auto mb-4 text-muted-foreground" size={48} />
               <p className="text-muted-foreground">아직 평가 결과가 없습니다.</p>
+              <p className="text-sm text-muted-foreground mt-2">
+                설정 탭에서 데이터셋을 업로드하고 평가를 실행하세요.
+              </p>
             </Card>
           )}
         </TabsContent>

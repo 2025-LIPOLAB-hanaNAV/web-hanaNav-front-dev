@@ -62,6 +62,7 @@ interface ChatPageProps {
   initialQuery?: string;
   initialFiles?: File[];
   onQueryProcessed?: () => void;
+  onEvaluationResult?: (result: import('../types/evaluation').EvaluationResult) => void;
 }
 type InitialSession = { assistantId: string; sessionId: string } | undefined;
 
@@ -89,7 +90,7 @@ const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: 
   );
 });
 
-export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
+export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, onEvaluationResult, initialSession }: ChatPagePropsExtended) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentMode, setCurrentMode] = useState('quick');
@@ -279,7 +280,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           dataset_ids: [dsId!], // 첨부파일 기반 채팅은 오직 첨부파일만 사용
           llm: activeModel ? { model_name: activeModel } : undefined,
           prompt: {
-            system: "You are a helpful AI assistant. Please provide accurate and helpful responses based on the following knowledge:\n\n{knowledge}",
+            system: "당신은 도움이 되는 AI 어시스턴트입니다. 제공된 지식을 바탕으로 정확하고 유용한 답변을 제공해 주세요.\n\n**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**\n\n지식 내용:\n{knowledge}",
             quote: true,
             keyword: false,
             parameters: [
@@ -347,6 +348,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 4. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
 5. 친근하고 따뜻한 톤을 유지하되, 과도하게 길지 않게 답변하세요.
 
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
+
 🌟 사용자의 모든 질문에 성심껏 도움을 드리겠습니다`,
         opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?"
       },
@@ -360,6 +363,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 3. {knowledge}를 사용할 경우, 반드시 답변 안에 출처를 포함해야 합니다.
 4. {knowledge}가 비어 있거나 관련성이 낮으면, 무시하고 일반 지식이나 기본 대화로 답하세요.
 5. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
+
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
 
 지식베이스 내용:
 {knowledge}
@@ -381,6 +386,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 4. 답변 시 근거와 논리를 명확히 제시합니다.
 5. 필요시 추가 확인이나 검증 방법을 안내합니다.
 
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
+
 🔍 정확하고 신뢰할 수 있는 정보만을 제공하겠습니다`,
         opener: "🔍 안녕하세요! 정밀한별입니다. 정확한 검증이 필요한 질문을 말씀해 주세요."
       },
@@ -395,6 +402,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 4. {knowledge}를 인용할 때는 정확한 출처와 근거를 명시합니다.
 5. 지식베이스에 정보가 부족하면 "추가 검증이 필요한 사항"으로 안내합니다.
 6. 모든 답변은 단계별 검증 과정을 포함합니다.
+
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
 
 검증된 지식베이스 내용:
 {knowledge}
@@ -416,6 +425,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 4. 복잡한 개념도 쉬운 표현으로 요약합니다.
 5. 필요시 핵심 키워드나 요점을 번호로 정리합니다.
 
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
+
 📝 복잡한 내용도 핵심만 뽑아 명쾌하게 정리해 드리겠습니다`,
         opener: "📝 안녕하세요! 요약달님입니다. 정리가 필요한 내용을 말씀해 주세요."
       },
@@ -430,6 +441,8 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 4. 요약 시 출처별로 핵심 포인트를 구분하여 제시합니다.
 5. 모든 요약은 3-5개의 핵심 포인트로 압축합니다.
 6. 상세 내용이 필요한 경우에만 부가 설명을 추가합니다.
+
+**중요: 반드시 한국어로만 답변하세요. 영어나 다른 언어는 절대 사용하지 마세요.**
 
 문서 원본 내용:
 {knowledge}
@@ -634,47 +647,78 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     const streamController = new AbortController();
     activeStreamController.current = streamController;
 
-    const userMessage: ChatMessage = {
-      id: Date.now().toString(),
-      type: 'user',
-      content: query,
-      timestamp: new Date().toLocaleTimeString('ko-KR', {
-        hour: '2-digit',
-        minute: '2-digit'
-      })
-    };
+    let activeAssistantId: string;
+    let ensuredSessionId: string;
 
-    setMessages(prev => [...prev, userMessage]);
-    setIsLoading(true);
-    console.log('Query submitted with KBs:', selectedKBs, 'assistant:', assistantId, 'files:', files?.map(f => f.name));
+    try {
+      // 먼저 새 세션인지 확인하고 인사말 추가
+      const ephemeralId = await ensureEphemeralContext(files);
+      activeAssistantId = ephemeralId || assistantId || defaultAssistantByMode[currentMode];
+      if (!activeAssistantId) {
+        alert('어시스턴트를 선택하거나 기본 ID를 설정하세요.');
+        return;
+      }
 
-    const loadingMessageId = `assistant_${Date.now() + 1}`;
-    const loadingMessage: ChatMessage = {
-      id: loadingMessageId,
-      type: 'assistant',
-      content: '',
-      timestamp: '',
-      state: 'loading'
-    };
+      const desiredName = query.slice(0, 80) || '새 대화';
+      ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
 
-    setMessages(prev => [...prev, loadingMessage]);
+      // 새 세션이고 메시지가 없으면 인사말을 먼저 추가
+      const isNewSession = messages.length === 0 && (!sessionId || sessionId !== ensuredSessionId);
+      if (isNewSession) {
+        const greetingMessage: ChatMessage = {
+          id: `greeting_${Date.now()}`,
+          type: 'assistant',
+          content: `안녕하세요! 하나 내비입니다. 🌟\n\n무엇을 도와드릴까요? 궁금한 것이 있으시면 언제든 말씀해 주세요.`,
+          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
+          state: 'success'
+        };
+        setMessages(prev => [...prev, greetingMessage]);
+      }
+
+      const userMessage: ChatMessage = {
+        id: Date.now().toString(),
+        type: 'user',
+        content: query,
+        timestamp: new Date().toLocaleTimeString('ko-KR', {
+          hour: '2-digit',
+          minute: '2-digit'
+        })
+      };
+
+      setMessages(prev => [...prev, userMessage]);
+      setIsLoading(true);
+      console.log('Query submitted with KBs:', selectedKBs, 'assistant:', assistantId, 'files:', files?.map(f => f.name));
+
+      const loadingMessageId = `assistant_${Date.now() + 1}`;
+      const loadingMessage: ChatMessage = {
+        id: loadingMessageId,
+        type: 'assistant',
+        content: '',
+        timestamp: '',
+        state: 'loading'
+      };
+
+      setMessages(prev => [...prev, loadingMessage]);
 
     const preprocessMarkdownText = (text: string): string => {
       let cleaned = text.replace(/\[ID:\d+\]/g, '');
+
+      // tool call 관련 raw 텍스트 제거
+      cleaned = cleaned.replace(/<\s*\|begin_search_query\|.*?\|end_search_query\|\s*>/gs, '');
+      cleaned = cleaned.replace(/raw='[^']*'/g, '');
+      cleaned = cleaned.replace(/err=[^}]*/g, '');
 
       cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
         const index = parseInt(num);
         return `[${index + 1}]`;
       });
 
-      const boldTextMap = new Map<string, string>();
-      let boldCounter = 0;
-      cleaned = cleaned.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
-        const placeholder = `__BOLD_${boldCounter++}__`;
-        boldTextMap.set(placeholder, match);
-        return placeholder;
-      });
+      // 테이블 구분자 정리
+      cleaned = cleaned.replace(/\|\s*\|\s*\|/g, '| |');
+      cleaned = cleaned.replace(/\|\s*$/gm, '|');
+      cleaned = cleaned.replace(/^\s*\|/gm, '|');
 
+      // 줄바꿈 정리
       cleaned = cleaned.replace(/\.\s/g, '.   ');
       cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
       cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
@@ -687,36 +731,11 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
       cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
 
-      boldTextMap.forEach((original, placeholder) => {
-        cleaned = cleaned.replace(placeholder, original);
-      });
-
       cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
       cleaned = cleaned.trim();
 
       return cleaned;
     };
-
-    try {
-      const ephemeralId = await ensureEphemeralContext(files);
-      const activeAssistantId = ephemeralId || assistantId || defaultAssistantByMode[currentMode];
-      if (!activeAssistantId) throw new Error('어시스턴트를 선택하거나 기본 ID를 설정하세요.');
-
-      const desiredName = query.slice(0, 80) || '새 대화';
-      const ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
-
-      // 새 세션이고 메시지가 없으면 인사말 추가
-      const isNewSession = messages.length === 0 && (!sessionId || sessionId !== ensuredSessionId);
-      if (isNewSession) {
-        const greetingMessage: ChatMessage = {
-          id: `greeting_${Date.now()}`,
-          type: 'assistant',
-          content: `안녕하세요! 하나 내비입니다. 🌟\n\n무엇을 도와드릴까요? 궁금한 것이 있으시면 언제든 말씀해 주세요.`,
-          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-          state: 'success'
-        };
-        setMessages(prev => [...prev, greetingMessage]);
-      }
 
       const t0 = Date.now();
 
@@ -748,7 +767,11 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           ...(selectedKBs.length === 0 && {
             temperature: 0.3,
             top_k: 0
-          })
+          }),
+          // tool call 오류 방지를 위한 추가 옵션
+          stream: true,
+          quote: true,
+          doc_aggs: false
         },
         {
           signal: streamController.signal,
@@ -1032,6 +1055,20 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     }
   };
 
+  // 정밀검증 모드로 전환하는 함수
+  const handleSwitchToPrecise = async () => {
+    if (currentMode === 'precise') {
+      alert('이미 정밀검증 모드입니다.');
+      return;
+    }
+
+    const shouldSwitch = window.confirm('정밀검증 모드로 전환하시겠습니까?\n현재 대화 내역이 새로운 세션으로 복사됩니다.');
+
+    if (shouldSwitch) {
+      await handleModeChange('precise');
+    }
+  };
+
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
@@ -1212,7 +1249,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       )}
 
       {/* Chat Messages */}
-      <div className="flex-1 overflow-auto p-4 space-y-6">
+      <div className="flex-1 overflow-y-auto overflow-x-hidden p-4 space-y-6 min-h-0">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
             <HanaNaviLogo size={96} className="mb-2 opacity-50" />
@@ -1239,6 +1276,13 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                   isEvidenceLow={message.isEvidenceLow}
                   sources={message.sources}
                   onSourceClick={onSourceClick}
+                  onSwitchToPrecise={handleSwitchToPrecise}
+                  // 평가 관련 props
+                  previousMessage={index > 0 && messages[index - 1]?.type === 'user' ? messages[index - 1].content : undefined}
+                  assistantId={assistantId}
+                  sessionId={sessionId}
+                  retrievedDocIds={message.sources?.map(s => s.id)}
+                  onEvaluationResult={onEvaluationResult}
                 />
                 
               </div>

@@ -7,6 +7,8 @@ import { ChatHistoryList } from './components/ChatHistoryList';
 import { AdminConsole } from './components/AdminConsole';
 import KnowledgeBase from './components/KnowledgeBase';
 import { EvidencePanel } from './components/EvidencePanel';
+import { ResizablePanel } from './components/ui/ResizablePanel';
+import type { EvaluationResult } from './types/evaluation';
 
 interface EvidenceItem {
   id: string;
@@ -44,6 +46,7 @@ export default function App() {
     initialChunkId?: string;
     initialHighlight?: string;
   }>({});
+  const [evaluationResults, setEvaluationResults] = useState<EvaluationResult[]>([]);
 
   const toggleTheme = () => {
     setIsDarkMode(!isDarkMode);
@@ -103,6 +106,11 @@ export default function App() {
     setCurrentView('documents');
   };
 
+  const handleEvaluationResult = (result: EvaluationResult) => {
+    console.log('Evaluation result received:', result);
+    setEvaluationResults(prev => [result, ...prev.slice(0, 99)]); // 최대 100개까지만 저장
+  };
+
   const renderCurrentView = () => {
     switch (currentView) {
       case 'home':
@@ -126,12 +134,14 @@ export default function App() {
               setSearchQuery('');
               setSearchFiles([]);
             }}
+            onEvaluationResult={handleEvaluationResult}
           />
         );
       case 'library':
         return (
-          <div className="h-full grid grid-cols-1 md:grid-cols-[480px_minmax(0,1fr)]">
-            <div className="border-b md:border-b-0 md:border-r flex flex-col min-h-0">
+          <div className="h-full flex flex-col md:flex-row">
+            {/* Mobile: stacked layout */}
+            <div className="md:hidden border-b flex flex-col min-h-0">
               <ChatHistoryList
                 activeSessionKey={librarySelectedSession ? `${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}` : undefined}
                 onCreateNewSession={() => {
@@ -168,24 +178,67 @@ export default function App() {
                 }}
               />
             </div>
-            <div className="hidden md:flex flex-col min-h-0">
-              {librarySelectedSession ? (
-                <div className="flex-1 min-h-0 overflow-hidden">
-                  <ChatPage
-                    key={`library-${librarySelectedSession.assistantId}-${librarySelectedSession.sessionId}-${Date.now()}`}
-                    onEvidenceClick={handleEvidenceClick}
-                    onSourceClick={handleSourceClick}
-                    initialSession={librarySelectedSession}
-                  />
-                </div>
-              ) : (
-                <div className="m-auto px-8 text-center text-muted-foreground">
-                  <h2 className="text-lg font-semibold mb-2">채팅 기록을 선택하세요</h2>
-                  <p className="text-sm">
-                    선택한 대화가 오른쪽에 로드되고, 바로 이어서 채팅을 진행할 수 있습니다.
-                  </p>
-                </div>
-              )}
+
+            {/* Desktop: resizable panel layout */}
+            <div className="hidden md:flex h-full flex-1">
+              <ResizablePanel
+                defaultWidth={320}
+                minWidth={250}
+                maxWidth={500}
+                className="border-r flex flex-col min-h-0"
+              >
+                <ChatHistoryList
+                  activeSessionKey={librarySelectedSession ? `${librarySelectedSession.assistantId}:${librarySelectedSession.sessionId}` : undefined}
+                  onCreateNewSession={() => {
+                    // 새 세션 생성은 ChatHistoryList에서 처리하므로 여기서는 빈 함수
+                  }}
+                  onOpenSession={(session) => {
+                    const assistantId = (session as any).assistantId as string | undefined;
+                    if (!assistantId) {
+                      console.warn('No assistantId found for session:', session);
+                      return;
+                    }
+
+                    const payload = {
+                      assistantId,
+                      sessionId: session.id,
+                      messages: session.messages || []
+                    };
+                    console.log('Opening session from library:', payload);
+
+                    // 기존 선택 해제 후 새 세션 설정
+                    setLibrarySelectedSession(null);
+                    setInitialSession(undefined);
+
+                    // 비동기로 새 세션 설정
+                    setTimeout(() => {
+                      setLibrarySelectedSession(payload);
+                      setInitialSession(payload);
+                    }, 50);
+                  }}
+                />
+              </ResizablePanel>
+
+              <div className="flex-1 flex flex-col min-h-0">
+                {librarySelectedSession ? (
+                  <div className="flex-1 min-h-0 overflow-hidden">
+                    <ChatPage
+                      key={`library-${librarySelectedSession.assistantId}-${librarySelectedSession.sessionId}-${Date.now()}`}
+                      onEvidenceClick={handleEvidenceClick}
+                      onSourceClick={handleSourceClick}
+                      initialSession={librarySelectedSession}
+                      onEvaluationResult={handleEvaluationResult}
+                    />
+                  </div>
+                ) : (
+                  <div className="m-auto px-8 text-center text-muted-foreground">
+                    <h2 className="text-lg font-semibold mb-2">채팅 기록을 선택하세요</h2>
+                    <p className="text-sm">
+                      선택한 대화가 오른쪽에 로드되고, 바로 이어서 채팅을 진행할 수 있습니다.
+                    </p>
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         );
@@ -219,7 +272,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen text-foreground" style={{ background: 'var(--background)' }}>
+    <div className="min-h-screen text-foreground bg-background">
       <AppShell
         currentView={currentView}
         onViewChange={setCurrentView}

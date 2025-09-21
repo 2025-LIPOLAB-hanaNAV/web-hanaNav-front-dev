@@ -4,7 +4,7 @@ import { Badge } from './ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from './ui/select';
 import { Checkbox } from './ui/checkbox';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from './ui/dialog';
-import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats } from '../services/ragflow';
+import { listDatasets, listChats, updateChat, updateChatSession, deleteChatSessions, createChatSession, type ChatAssistant, converseStream, converseOnce, createDataset, uploadDocuments, parseDocuments, deleteDatasets, createChat, deleteChats, getChatDetails } from '../services/ragflow';
 import { requireConfig, RAGFLOW_ASSISTANT_PRECISE_ID, RAGFLOW_ASSISTANT_QUICK_ID, RAGFLOW_ASSISTANT_SUMMARY_ID } from '../config';
 import { ChatBubble } from './ChatBubble';
 import { AnswerCard } from './AnswerCard';
@@ -77,7 +77,7 @@ const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: 
   modelByMode: Record<string, string>;
 }) => {
   // 현재 모드에 따른 모델명 가져오기
-  const currentModelName = modelByMode[currentMode] || 'gemma3:12b';
+  const currentModelName = modelByMode[currentMode] || 'gemma3:27b';
 
   return (
     <div className="flex-shrink-0">
@@ -329,12 +329,12 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
   
   const chatModes: ChatMode[] = [
     { id: 'quick', name: '빠른답', description: '즉시 답변', icon: 'arrow-right' },
-    { id: 'precise', name: '정밀검증', description: '상세 검증', icon: 'search' },
-    { id: 'summary', name: '요약전용', description: '핵심만', icon: 'file-text' }
+    { id: 'precise', name: '정밀검증', description: '상세 검증', icon: 'search' }
+    // { id: 'summary', name: '요약전용', description: '핵심만', icon: 'file-text' } // 완성도 개선 후 재활성화 예정
   ];
 
   const modelByMode: Record<string, string> = {
-    quick: 'gemma3:12b',
+    quick: 'gemma3:27b', // 더 강력한 모델로 변경
     precise: 'gpt-oss:latest',
     summary: 'gemma3:27b',
   };
@@ -365,19 +365,15 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?"
       },
       rag: {
-        prompt: `당신은 "빠른별돌이"라는 이름의 챗봇입니다 🌙
-빠른별돌이는 별처럼 반짝이며 빠르게 핵심을 알려주는 친구 같은 어시스턴트예요.
+        prompt: `아래 문서 내용만을 사용해서 질문에 답하세요.
 
-지식베이스 활용 규칙:
-1. 아래 {knowledge}는 지식베이스에서 검색된 문서 조각입니다.
-2. 질문이 지식베이스와 관련 있을 때만 {knowledge}를 참고하세요.
-3. {knowledge}를 사용할 경우, 반드시 답변 안에 출처를 포함해야 합니다.
-4. {knowledge}가 비어 있거나 관련성이 낮으면, 무시하고 일반 지식이나 기본 대화로 답하세요.
-5. 답변은 항상 짧고 명확한 문단(1~3문장)으로 작성하세요.
-
-지식베이스 내용:
+문서:
 {knowledge}
-(위 내용은 필요할 때만 참고하세요 🌟)`,
+
+규칙:
+- 문서에 답이 있으면 문서 내용으로만 답변
+- 문서에 답이 없으면 "문서에서 관련 정보를 찾을 수 없습니다"
+- 출처는 [1] 형태로 표시`,
         opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요."
       }
     },
@@ -399,20 +395,16 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         opener: "🔍 안녕하세요! 정밀한별입니다. 정확한 검증이 필요한 질문을 말씀해 주세요."
       },
       rag: {
-        prompt: `당신은 "정밀한별"이라는 이름의 전문 검증 챗봇입니다 🔍
-정밀한별은 정확성과 신뢰성을 최우선으로 하는 전문가 수준의 어시스턴트입니다.
+        prompt: `제공된 문서를 정밀하게 분석하여 답변하세요.
 
-지식베이스 정밀 활용 규칙:
-1. 아래 {knowledge}는 검증된 문서에서 추출한 신뢰할 수 있는 정보입니다.
-2. {knowledge}의 내용을 철저히 분석하고 교차 검증합니다.
-3. 여러 문서 간 상충되는 내용이 있다면 반드시 명시합니다.
-4. {knowledge}를 인용할 때는 정확한 출처와 근거를 명시합니다.
-5. 지식베이스에 정보가 부족하면 "추가 검증이 필요한 사항"으로 안내합니다.
-6. 모든 답변은 단계별 검증 과정을 포함합니다.
-
-검증된 지식베이스 내용:
+문서:
 {knowledge}
-(위 내용을 다각도로 분석하여 정밀한 답변을 제공합니다 🔍)`,
+
+요구사항:
+- 문서에서 정확한 정보만 추출하여 답변
+- 추측이나 일반 지식 사용 금지
+- 문서 내용을 직접 인용하고 출처 [1] 표시
+- 문서에 답이 없으면 "제공된 문서에서 관련 정보를 찾을 수 없습니다"`,
         opener: "🔍 정밀한별입니다! 전문적인 검증과 함께 정확한 답변을 드리겠습니다."
       }
     },
@@ -437,17 +429,18 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         prompt: `당신은 "요약달님"이라는 이름의 요약 전문 챗봇입니다 📝
 요약달님은 방대한 문서에서 핵심만 뽑아 간결하게 정리하는 전문가입니다.
 
-지식베이스 요약 규칙:
-1. 아래 {knowledge}에서 가장 중요한 핵심 정보만 추출합니다.
-2. 여러 문서의 내용을 종합하여 통합된 요약을 제공합니다.
-3. 중복되는 내용은 제거하고 고유한 정보만 정리합니다.
-4. 요약 시 출처별로 핵심 포인트를 구분하여 제시합니다.
-5. 모든 요약은 3-5개의 핵심 포인트로 압축합니다.
-6. 상세 내용이 필요한 경우에만 부가 설명을 추가합니다.
+**지식베이스 기반 요약 필수 규칙**
+1. 아래 {knowledge}는 검증된 원본 문서에서 추출한 정확한 내용입니다.
+2. 질문과 관련된 내용이 {knowledge}에 있다면 **반드시 이 내용만을 기반**으로 요약하세요.
+3. {knowledge} 외의 일반 지식이나 추측은 **절대 사용하지 마세요**.
+4. 요약 시 원본 문서의 핵심 내용을 왜곡하지 말고 정확히 압축하세요.
+5. 모든 요약은 3-5개의 핵심 포인트로 압축하고 출처를 명시합니다.
+6. {knowledge}에 관련 정보가 없으면 "제공된 문서에서 관련 정보를 찾을 수 없습니다"라고 안내합니다.
 
-문서 원본 내용:
+**원본 문서 내용 (요약 기준):**
 {knowledge}
-(위 내용에서 핵심만 추려 명쾌하게 요약합니다 📝)`,
+
+위 문서 내용이 질문과 관련이 있다면 반드시 이 정보만을 정확히 요약해주세요! 📝`,
         opener: "📝 요약달님입니다! 복잡한 문서 내용을 핵심만 뽑아 정리해 드리겠습니다."
       }
     }
@@ -620,10 +613,49 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           promptMode: selectedKBs.length === 0 ? '일상대화용' : '지식베이스용'
         });
 
+        console.log('🔧 어시스턴트 업데이트 전송 중:', {
+          assistantId: activeAssistantId,
+          dataset_ids: selectedKBs,
+          prompt: promptConfig
+        });
+
         await updateChat(activeAssistantId, {
           dataset_ids: selectedKBs,
           prompt: promptConfig
         });
+
+        console.log('✅ 어시스턴트 업데이트 완료');
+
+        // 업데이트 후 실제 설정 확인
+        try {
+          const chatDetails = await getChatDetails(activeAssistantId);
+          console.log('🔍 어시스턴트 현재 설정:', {
+            dataset_ids: chatDetails.dataset_ids,
+            prompt: chatDetails.prompt,
+            name: chatDetails.name
+          });
+        } catch (err) {
+          console.error('❌ 어시스턴트 설정 확인 실패:', err);
+        }
+
+        // 지식베이스가 설정되었는데도 프롬프트가 업데이트되지 않은 경우 강제 리셋
+        if (selectedKBs.length > 0) {
+          console.log('🔄 지식베이스용 프롬프트 강제 재설정 시도...');
+          try {
+            await updateChat(activeAssistantId, {
+              prompt: {
+                prompt: modePrompts.rag.prompt,
+                opener: modePrompts.rag.opener,
+                empty_response: "",
+                show_quote: true,
+                variables: [{ key: "knowledge", optional: true }]
+              }
+            });
+            console.log('✅ 강제 프롬프트 재설정 완료');
+          } catch (err) {
+            console.error('❌ 강제 프롬프트 재설정 실패:', err);
+          }
+        }
       }
 
       if (isEphemeral) {
@@ -674,12 +706,35 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     setMessages(prev => [...prev, loadingMessage]);
 
     const preprocessMarkdownText = (text: string): string => {
-      let cleaned = text.replace(/\[ID:\d+\]/g, '');
+      console.log('🔧 전처리 시작 원본 텍스트:', text);
 
-      cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
+      // ID:숫자 형태를 클릭 가능한 링크로 변환 (1부터 시작)
+      let cleaned = text.replace(/ID:(\d+)/g, (match, num) => {
         const index = parseInt(num);
-        return `[${index + 1}]`;
+        const adjustedIndex = index + 1;
+        console.log(`🔧 ID:${num} → [${adjustedIndex}](#source-${adjustedIndex})`);
+        return `[${adjustedIndex}](#source-${adjustedIndex})`;
       });
+
+      // [숫자] 형태를 클릭 가능한 링크로 변환
+      // 단순하게 모든 [숫자]를 찾아서 변환하고, 중복 변환 방지
+      if (!cleaned.includes('#source-')) {
+        cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
+          const index = parseInt(num);
+          console.log(`🔧 [${num}] → [${index}](#source-${index})`);
+          return `[${index}](#source-${index})`;
+        });
+      }
+
+      // (출처: 파일명.pdf) 형태의 텍스트를 찾아서 링크로 변환
+      cleaned = cleaned.replace(/\(출처:\s*([^)]+)\)/g, (match, fileName) => {
+        // sources 배열에서 해당 파일명과 매칭되는 출처 찾기
+        // 일단 첫 번째 출처로 링크 생성 (나중에 더 정교하게 매칭 가능)
+        console.log(`🔧 출처 파일 감지: ${fileName}`);
+        return `([출처 1](#source-1))`;
+      });
+
+      console.log('🔧 전처리 완료 결과:', cleaned);
 
       const boldTextMap = new Map<string, string>();
       let boldCounter = 0;
@@ -719,18 +774,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       const desiredName = query.slice(0, 80) || '새 대화';
       const ensuredSessionId = await ensureSession(activeAssistantId, desiredName);
 
-      // 새 세션이고 메시지가 없으면 인사말 추가
-      const isNewSession = messages.length === 0 && (!sessionId || sessionId !== ensuredSessionId);
-      if (isNewSession) {
-        const greetingMessage: ChatMessage = {
-          id: `greeting_${Date.now()}`,
-          type: 'assistant',
-          content: `안녕하세요! 하나 내비입니다. 🌟\n\n무엇을 도와드릴까요? 궁금한 것이 있으시면 언제든 말씀해 주세요.`,
-          timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
-          state: 'success'
-        };
-        setMessages(prev => [...prev, greetingMessage]);
-      }
+      // 새 세션에서는 인사말을 미리 추가하지 않음 (응답 순서 혼란 방지)
 
       const t0 = Date.now();
 
@@ -753,31 +797,37 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         );
       };
 
-      const result = await converseOnce(
+      // converseStream을 사용하여 스트리밍 처리
+      const result = await converseStream(
         activeAssistantId,
         {
           question: query,
           session_id: ensuredSessionId,
-          stream: false,
-          // 지식베이스가 선택되지 않았으면 검색 비활성화
-          ...(selectedKBs.length === 0 && {
-            temperature: 0.3,
-            top_k: 0
-          })
+          stream: true,
+        },
+        {
+          signal: streamController.signal,
+          onMessage: (partial) => {
+            if (partial.answer) {
+              updateAssistantContent(partial.answer);
+              latestAnswer = partial.answer;
+            }
+            if (partial.reference) {
+              latestReference = partial.reference;
+            }
+            if (partial.session_id) {
+              latestSessionId = partial.session_id;
+            }
+          }
         }
       );
 
-      console.log('RAGFlow converseOnce result:', result);
+      console.log('RAGFlow converseStream result:', result);
 
       // Update variables for compatibility with existing code
       latestAnswer = result.answer || '';
-      latestReference = result.reference;
-      latestSessionId = result.session_id;
-
-      // Update UI immediately with the complete response
-      if (latestAnswer) {
-        updateAssistantContent(latestAnswer);
-      }
+      latestReference = result.reference || latestReference;
+      latestSessionId = result.session_id || latestSessionId;
 
       const dt = (Date.now() - t0) / 1000;
       const effectiveAnswer = result.answer ?? latestAnswer;
@@ -820,7 +870,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                 evidenceCount: Number(evidenceCount) || undefined,
                 responseTime: dt,
                 hasPII: false,
-                isEvidenceLow: selectedKBs.length > 0 && (!evidenceCount || evidenceCount === 0),
+                isEvidenceLow: selectedKBs.length > 0 && sources.length === 0 && (!evidenceCount || evidenceCount === 0),
                 sources: sources.length > 0 ? sources : undefined
               }
             : msg

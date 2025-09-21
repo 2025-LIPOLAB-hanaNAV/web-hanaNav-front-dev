@@ -166,12 +166,53 @@ export function ChatBubble({
           <div className="text-sm leading-relaxed prose prose-sm max-w-none dark:prose-invert">
             <ReactMarkdown
               components={{
-                // 링크 안전성 확보
-                a: ({ href, children, ...props }) => (
-                  <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
-                    {children}
-                  </a>
-                ),
+                // 링크 안전성 확보 및 출처 링크 처리
+                a: ({ href, children, ...props }) => {
+                  console.log('🔗 링크 감지:', { href, children, props });
+
+                  // 출처 번호 링크 처리 #source-숫자 형태
+                  if (href && href.startsWith('#source-')) {
+                    const sourceNumber = parseInt(href.replace('#source-', ''));
+                    const sourceIndex = sourceNumber - 1; // 1-based를 0-based로 변환
+
+                    console.log('🔗 출처 링크 처리:', {
+                      href,
+                      children,
+                      sourceNumber,
+                      sourceIndex,
+                      sourcesLength: sources?.length,
+                      hasSource: sources && sources[sourceIndex]
+                    });
+
+                    if (sources && sources[sourceIndex]) {
+                      return (
+                        <button
+                          className="inline-flex items-center gap-1 text-primary hover:text-primary/80 underline decoration-dotted underline-offset-2 cursor-pointer font-medium"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            console.log('🔗 출처 링크 클릭:', sources[sourceIndex]);
+                            onSourceClick?.(sources[sourceIndex]);
+                          }}
+                          title={`출처: ${sources[sourceIndex].title}`}
+                          {...props}
+                        >
+                          {children}
+                          <Icon name="external-link" size={10} className="inline" />
+                        </button>
+                      );
+                    }
+                    // 출처가 없으면 일반 텍스트로 표시 (디버깅 정보 포함)
+                    console.warn('⚠️ 출처를 찾을 수 없음:', { sourceNumber, sourceIndex, sourcesLength: sources?.length });
+                    return <span className="font-medium text-muted-foreground" title={`출처 ${sourceNumber}을 찾을 수 없습니다`}>{children}</span>;
+                  }
+
+                  // 일반 링크
+                  return (
+                    <a href={href} target="_blank" rel="noopener noreferrer" {...props}>
+                      {children}
+                    </a>
+                  );
+                },
                 // 코드 블록 스타일링
                 code: ({ className, children, ...props }) => (
                   <code
@@ -253,12 +294,12 @@ export function ChatBubble({
                 ),
                 // 리스트 스타일링
                 ul: ({ children, ...props }) => (
-                  <ul className="list-disc list-inside my-2 space-y-1" {...props}>
+                  <ul className="list-disc ml-4 my-2 space-y-1" {...props}>
                     {children}
                   </ul>
                 ),
                 ol: ({ children, ...props }) => (
-                  <ol className="list-decimal list-inside my-2 space-y-1" {...props}>
+                  <ol className="list-decimal ml-4 my-2 space-y-1" {...props}>
                     {children}
                   </ol>
                 ),

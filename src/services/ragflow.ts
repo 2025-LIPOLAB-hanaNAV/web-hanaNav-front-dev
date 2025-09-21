@@ -218,19 +218,66 @@ export async function listChunks(datasetId: string, documentId: string, params: 
 }
 
 export async function addChunk(datasetId: string, documentId: string, body: { content: string; important_keywords?: string[]; questions?: string[] }): Promise<ChunkItem> {
+  // 자동으로 중요 키워드 추출하여 보강
+  const enhancedBody = {
+    ...body,
+    important_keywords: body.important_keywords || extractImportantKeywords(body.content)
+  };
+
   const data = await ragFetch<{ chunk: ChunkItem }>(`/api/v1/datasets/${datasetId}/documents/${documentId}/chunks`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(enhancedBody),
   });
   return data.chunk;
 }
 
+// 중요 키워드 자동 추출 함수
+function extractImportantKeywords(content: string): string[] {
+  if (!content || content.length < 10) return [];
+
+  // 1. 전문 용어 패턴 추출
+  const professionalTerms = content.match(/[가-힣]{2,}(?:은행|보험|투자|대출|예금|적금|금융|사기|피싱|신용|카드|계좌|이체|송금)/g) || [];
+
+  // 2. 법적/제도적 용어 추출
+  const legalTerms = content.match(/제\d+조|조\d+항|[가-힣]{2,}(?:법|규정|지침|정책|제도|절차|기준|요건)/g) || [];
+
+  // 3. 조직/기관명 추출
+  const organizationTerms = content.match(/[가-힣]{2,}(?:은행|금융|기관|부서|팀|센터|본부|지점)/g) || [];
+
+  // 4. 중요 수치/금액 관련 용어
+  const financialTerms = content.match(/\d+(?:억|만|천)?(?:원|달러|유로)|금리|이율|수수료|한도|최대|최소|기준/g) || [];
+
+  // 5. 제목/헤딩에서 키워드 추출
+  const headingTerms = content.match(/(?:^|\n)(?:#+\s*|■\s*|▶\s*|◆\s*)([가-힣\s]{2,20})/gm)?.map(m => m.replace(/^[^\w가-힣]*/, '').trim()) || [];
+
+  // 모든 키워드 합치기 및 정리
+  const allKeywords = [
+    ...professionalTerms,
+    ...legalTerms,
+    ...organizationTerms,
+    ...financialTerms,
+    ...headingTerms
+  ]
+    .filter(keyword => keyword && keyword.length >= 2 && keyword.length <= 20)
+    .map(keyword => keyword.trim())
+    .filter((keyword, index, arr) => arr.indexOf(keyword) === index) // 중복 제거
+    .slice(0, 10); // 최대 10개로 제한
+
+  return allKeywords;
+}
+
 export async function updateChunk(datasetId: string, documentId: string, chunkId: string, body: { content?: string; important_keywords?: string[]; available?: boolean }): Promise<void> {
+  // 내용이 변경될 때 자동으로 중요 키워드 재추출
+  const enhancedBody = { ...body };
+  if (body.content && !body.important_keywords) {
+    enhancedBody.important_keywords = extractImportantKeywords(body.content);
+  }
+
   await ragFetch<void>(`/api/v1/datasets/${datasetId}/documents/${documentId}/chunks/${chunkId}`, {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(enhancedBody),
   });
 }
 
@@ -264,7 +311,200 @@ export async function retrieveChunks(params: RetrievalParams): Promise<{ chunks:
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(params),
   });
-  return { chunks: data?.chunks || [], total: (data as any)?.total || 0 };
+
+  // 검색 결과 후처리: 핵심 키워드 우선순위 적용
+  const processedChunks = enhanceSearchResults(data?.chunks || [], params.question || '');
+
+  return { chunks: processedChunks, total: (data as any)?.total || 0 };
+}
+
+// 검색 결과 품질 향상을 위한 후처리 함수
+function enhanceSearchResults(chunks: any[], question: string): any[] {
+  if (!chunks.length) return chunks;
+
+  const questionKeywords = extractKeywords(question);
+
+  return chunks.map(chunk => {
+    let enhancedScore = chunk.similarity || chunk.score || 0;
+
+    // 1. 메타데이터 패널티 적용
+    const metadataPatterns = [
+      /배포책임자|담당자|팀장|수석|조사역/g,
+      /\d{4}\.\d{1,2}\.\d{1,2}/g, // 날짜 패턴
+      /보도[\s]*자료|공지사항|알림/g,
+      /\(\d{2}-\d{4}-\d{4}\)/g // 전화번호 패턴
+    ];
+
+    const content = chunk.content || '';
+    let metadataPenalty = 0;
+
+    metadataPatterns.forEach(pattern => {
+      const matches = content.match(pattern);
+      if (matches) {
+        metadataPenalty += matches.length * 0.1; // 메타데이터 매치당 0.1점 감점
+      }
+    });
+
+    // 2. 핵심 키워드 보너스 적용
+    let keywordBonus = 0;
+    questionKeywords.forEach(keyword => {
+      const keywordRegex = new RegExp(keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
+      const matches = content.match(keywordRegex);
+      if (matches) {
+        keywordBonus += matches.length * 0.2; // 핵심 키워드 매치당 0.2점 가산
+      }
+    });
+
+    // 3. important_keywords 보너스
+    const importantKeywords = chunk.important_keywords || [];
+    let importantBonus = 0;
+    if (Array.isArray(importantKeywords)) {
+      importantKeywords.forEach(keyword => {
+        questionKeywords.forEach(qKeyword => {
+          if (keyword.includes(qKeyword) || qKeyword.includes(keyword)) {
+            importantBonus += 0.3; // important_keywords 매치시 0.3점 가산
+          }
+        });
+      });
+    }
+
+    // 4. 제목/헤딩 보너스
+    let structureBonus = 0;
+    const headingPatterns = [/#.*|제\d+조|조\d+항|항목\d+/g];
+    headingPatterns.forEach(pattern => {
+      questionKeywords.forEach(keyword => {
+        const headingRegex = new RegExp(`${pattern.source}.*${keyword}`, 'gi');
+        if (content.match(headingRegex)) {
+          structureBonus += 0.25; // 제목/헤딩에 키워드 포함시 0.25점 가산
+        }
+      });
+    });
+
+    // 최종 점수 계산
+    enhancedScore = Math.max(0, Math.min(1,
+      enhancedScore + keywordBonus + importantBonus + structureBonus - metadataPenalty
+    ));
+
+    return {
+      ...chunk,
+      similarity: enhancedScore,
+      score: enhancedScore,
+      _enhancement_details: {
+        original_score: chunk.similarity || chunk.score || 0,
+        keyword_bonus: keywordBonus,
+        important_bonus: importantBonus,
+        structure_bonus: structureBonus,
+        metadata_penalty: metadataPenalty,
+        final_score: enhancedScore
+      }
+    };
+  }).sort((a, b) => (b.similarity || b.score || 0) - (a.similarity || a.score || 0));
+}
+
+// converseOnce용 스트리밍 응답 처리
+async function handleStreamingResponse(res: Response, question: string, handlers?: { onMessage?: (partial: CompletionResult) => void }): Promise<CompletionResult> {
+  if (!res.body) {
+    throw new Error('Streaming response body is empty.');
+  }
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  let lastResult: CompletionResult = {};
+
+  console.log('RAGFlow converseOnce stream setup complete, starting to read...');
+
+  try {
+    while (true) {
+      const { value, done } = await reader.read();
+      if (done) {
+        console.log('RAGFlow converseOnce stream reading completed');
+        break;
+      }
+
+      const decodedChunk = decoder.decode(value, { stream: true });
+      console.log('RAGFlow converseOnce decoded chunk:', decodedChunk);
+      buffer += decodedChunk;
+
+      // SSE 형태의 데이터 처리
+      const segments = buffer.split(/\r?\n\r?\n/);
+      buffer = segments.pop() ?? '';
+
+      for (const segment of segments) {
+        if (!segment.trim()) continue;
+
+        const lines = segment.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
+            if (dataStr === '[DONE]') {
+              console.log('RAGFlow converseOnce stream completed');
+              break;
+            }
+
+            try {
+              const data = JSON.parse(dataStr);
+              console.log('RAGFlow converseOnce stream data:', data);
+
+              // RAGFlow 네이티브 포맷 처리
+              if (data.data && typeof data.data === 'object') {
+                if (data.data.answer) {
+                  lastResult = {
+                    answer: data.data.answer,
+                    reference: data.data.reference,
+                    session_id: data.data.session_id,
+                  };
+                  console.log('RAGFlow converseOnce updated result:', lastResult);
+                  handlers?.onMessage?.({ ...lastResult });
+                }
+              }
+            } catch (e) {
+              console.warn('Failed to parse converseOnce stream data:', dataStr, e);
+            }
+          }
+        }
+      }
+    }
+  } catch (streamError) {
+    console.error('RAGFlow converseOnce stream reading error:', streamError);
+    throw streamError;
+  }
+
+  // 남은 버퍼 처리
+  buffer += decoder.decode(new Uint8Array(), { stream: false });
+  if (buffer) {
+    console.log('RAGFlow converseOnce processing remaining buffer:', buffer);
+  }
+
+  // 스트리밍 완료 후 검색 결과 후처리 적용
+  if (lastResult.reference && lastResult.reference.chunks) {
+    const enhancedReference = {
+      ...lastResult.reference,
+      chunks: enhanceSearchResults(lastResult.reference.chunks, question),
+    };
+
+    return {
+      ...lastResult,
+      reference: enhancedReference
+    };
+  }
+
+  return lastResult;
+}
+
+// 질문에서 핵심 키워드 추출
+function extractKeywords(question: string): string[] {
+  // 불용어 제거 및 핵심 단어 추출
+  const stopWords = ['은', '는', '이', '가', '을', '를', '의', '와', '과', '에', '에서', '로', '으로', '부터', '까지', '와', '과', '및', '그리고', '또는', '하지만', '그러나', '따라서'];
+
+  // 한글, 영문, 숫자로 구성된 단어들 추출
+  const words = question.match(/[가-힣a-zA-Z0-9]+/g) || [];
+
+  return words
+    .filter(word => word.length >= 2) // 2글자 이상
+    .filter(word => !stopWords.includes(word)) // 불용어 제거
+    .filter((word, index, arr) => arr.indexOf(word) === index); // 중복 제거
 }
 
 // Chat Assistants
@@ -422,9 +662,9 @@ export type CompletionResult = {
   session_id?: string;
 };
 
-export async function converseOnce(chatId: string, body: { question: string; session_id?: string; user_id?: string; stream?: boolean }): Promise<CompletionResult> {
-  // Use OpenAI-compatible endpoint for better compatibility
-  const path = `/api/v1/chats_openai/${chatId}/chat/completions`;
+export async function converseOnce(chatId: string, body: { question: string; session_id?: string; user_id?: string; stream?: boolean; temperature?: number; top_k?: number; similarity_threshold?: number; vector_similarity_weight?: number; rerank_id?: string; keyword?: boolean }, handlers?: { onMessage?: (partial: CompletionResult) => void }): Promise<CompletionResult> {
+  // Use native RAGFlow endpoint to ensure proper prompt and knowledge base handling
+  const path = `/api/v1/chats/${chatId}/completions`;
   const fullPath = USE_PROXY_FLAG ? path.replace('/api/', '/api/ragflow/') : path;
   // 타임아웃 컨트롤러 생성 (5분)
   const controller = new AbortController();
@@ -438,9 +678,16 @@ export async function converseOnce(chatId: string, body: { question: string; ses
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: "model",
-        messages: [{ role: "user", content: body.question }],
-        stream: body.stream ?? false
+        question: body.question,
+        session_id: body.session_id,
+        stream: body.stream ?? false,
+        // 검색 품질 개선을 위한 파라미터 추가
+        ...(body.similarity_threshold !== undefined && { similarity_threshold: body.similarity_threshold }),
+        ...(body.vector_similarity_weight !== undefined && { vector_similarity_weight: body.vector_similarity_weight }),
+        ...(body.top_k !== undefined && { top_k: body.top_k }),
+        ...(body.temperature !== undefined && { temperature: body.temperature }),
+        ...(body.rerank_id && { rerank_id: body.rerank_id }),
+        ...(body.keyword !== undefined && { keyword: body.keyword })
       }),
       signal: controller.signal,
     });
@@ -454,29 +701,42 @@ export async function converseOnce(chatId: string, body: { question: string; ses
       console.error('RAGFlow error response:', message);
       throw new Error(message);
     }
+
+    // 스트리밍 모드인 경우 스트림 처리
+    if (body.stream && ct.includes('text/plain')) {
+      return await handleStreamingResponse(res, body.question || '', handlers);
+    }
+
     // Try JSON first
     if (ct.includes('application/json')) {
       const j = await res.json() as any;
       console.log('RAGFlow JSON response:', j);
 
-      // Handle OpenAI-like schema { choices: [ { message: { content } } ] } - prioritize this format
+      // Handle RAGFlow native schema { code, data: { answer, reference, session_id } } - prioritize this format
+      if (j && typeof j === 'object' && ('data' in j)) {
+        const data = j.data || {};
+        console.log('RAGFlow native data field:', data);
+        if (data && typeof data === 'object') {
+          if (data.answer || data.session_id) {
+            console.log('RAGFlow native answer found:', data.answer);
+
+            // 검색 결과 후처리 적용
+            const enhancedReference = data.reference ? {
+              ...data.reference,
+              chunks: enhanceSearchResults(data.reference.chunks || [], body.question || ''),
+            } : data.reference;
+
+            return { answer: data.answer, reference: enhancedReference, session_id: data.session_id };
+          }
+        }
+      }
+
+      // Handle OpenAI-like schema { choices: [ { message: { content } } ] } - fallback
       if (j && Array.isArray(j.choices) && j.choices.length > 0) {
         const choice = j.choices[0];
         const content = choice?.message?.content ?? choice?.delta?.content ?? '';
-        console.log('RAGFlow OpenAI-like response content:', content);
+        console.log('RAGFlow OpenAI-like response content (fallback):', content);
         return { answer: content, reference: undefined, session_id: body.session_id };
-      }
-
-      // Handle RAGFlow native schema { code, data: { answer, reference, session_id } } - fallback
-      if (j && typeof j === 'object' && ('data' in j)) {
-        const data = j.data || {};
-        console.log('RAGFlow data field:', data);
-        if (data && typeof data === 'object') {
-          if (data.answer || data.session_id) {
-            console.log('RAGFlow answer found:', data.answer);
-            return { answer: data.answer, reference: data.reference, session_id: data.session_id };
-          }
-        }
       }
 
       // Unknown JSON shape
@@ -490,7 +750,14 @@ export async function converseOnce(chatId: string, body: { question: string; ses
     console.log('RAGFlow parsed SSE data:', last);
     if (last && last.data && last.data !== true) {
       console.log('RAGFlow SSE answer found:', last.data.answer);
-      return { answer: last.data.answer, reference: last.data.reference, session_id: last.data.session_id };
+
+      // 검색 결과 후처리 적용
+      const enhancedReference = last.data.reference ? {
+        ...last.data.reference,
+        chunks: enhanceSearchResults(last.data.reference.chunks || [], body.question || ''),
+      } : last.data.reference;
+
+      return { answer: last.data.answer, reference: enhancedReference, session_id: last.data.session_id };
     }
     console.warn('RAGFlow: No valid response found');
     return {};
@@ -525,7 +792,7 @@ function parseSseEvent(chunk: string): any[] {
 
 export async function converseStream(
   chatId: string,
-  body: { question: string; session_id?: string; user_id?: string; stream?: boolean },
+  body: { question: string; session_id?: string; user_id?: string; stream?: boolean; temperature?: number; top_k?: number; similarity_threshold?: number; vector_similarity_weight?: number; rerank_id?: string; keyword?: boolean },
   handlers: ConverseStreamHandlers = {},
 ): Promise<CompletionResult> {
   if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');
@@ -543,8 +810,9 @@ export async function converseStream(
   // 사용자 제공 signal과 타임아웃 signal 조합
   const combinedSignal = handlers.signal || defaultController.signal;
 
+  let res: Response;
   try {
-    const res = await fetch(url.toString(), {
+    res = await fetch(url.toString(), {
       method: 'POST',
       headers: {
         'Authorization': `Bearer ${RAGFLOW_API_KEY}`,
@@ -583,6 +851,7 @@ export async function converseStream(
   const decoder = new TextDecoder();
   let buffer = '';
   let lastResult: CompletionResult = {};
+  let streamCompleted = false;
   const sessionId = body.session_id; // Extract session_id to avoid scope issues
 
   console.log('RAGFlow stream setup complete, starting to read...');
@@ -599,8 +868,10 @@ export async function converseStream(
 
       const dataStr = trimmed.slice(6); // Remove "data: " prefix
       if (dataStr === '[DONE]') {
-        console.log('RAGFlow OpenAI stream completed');
-        return true;
+        console.log('RAGFlow OpenAI stream completed with final result:', lastResult);
+        // [DONE]을 받았을 때도 바로 return하지 말고 완료 표시만 하기
+        streamCompleted = true;
+        continue;
       }
 
       try {
@@ -624,8 +895,9 @@ export async function converseStream(
           }
 
           if (choice.finish_reason === 'stop') {
-            console.log('RAGFlow stream finished');
-            return true;
+            console.log('RAGFlow stream finished with lastResult:', lastResult);
+            // finish_reason이 stop일 때도 계속 처리해서 lastResult를 유지
+            // return true는 하지 않고 계속 진행
           }
         }
       } catch (e) {
@@ -659,7 +931,7 @@ export async function converseStream(
         handlers.onMessage?.({ ...lastResult });
       }
     }
-    return false;
+    return streamCompleted;
   };
 
   try {
@@ -694,6 +966,19 @@ export async function converseStream(
   if (buffer) {
     const finished = handleChunk(buffer);
     if (finished) return lastResult;
+  }
+
+  // 스트리밍 완료 후 검색 결과 후처리 적용
+  if (lastResult.reference && lastResult.reference.chunks) {
+    const enhancedReference = {
+      ...lastResult.reference,
+      chunks: enhanceSearchResults(lastResult.reference.chunks, body.question || ''),
+    };
+
+    return {
+      ...lastResult,
+      reference: enhancedReference
+    };
   }
 
   return lastResult;

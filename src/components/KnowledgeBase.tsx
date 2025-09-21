@@ -324,10 +324,10 @@ function KnowledgeBase({
         page: 1,
         page_size: retrievePageSize,
         highlight: highlightSearch,
-        similarity_threshold: 0.1, // 낮은 임계값으로 더 많은 결과 포함
-        vector_similarity_weight: 0.7, // 벡터 유사도 가중치 설정
-        top_k: Math.min(retrievePageSize * 2, 100), // 리랭킹을 위해 더 많은 후보 검색
-        keyword: true, // 키워드 검색도 활성화
+        similarity_threshold: 0.2, // 더 엄격한 임계값으로 품질 향상
+        vector_similarity_weight: 0.5, // 벡터와 키워드의 균형 조정
+        top_k: Math.min(retrievePageSize * 3, 150), // 더 많은 후보로 리랭킹 품질 향상
+        keyword: true, // 키워드 검색 활성화
         rerank_id: 'BAAI/bge-reranker-v2-m3' // 리랭킹 모델 활성화
       });
       console.log('Retrieve Results Debug:', res.chunks);
@@ -585,7 +585,30 @@ function KnowledgeBase({
                                   {ch.content}
                                 </div>
                               ) : (
-                                ch.content
+                                <div>
+                                  {ch.content}
+                                  {/* 중요 키워드 표시 */}
+                                  {ch.important_keywords && Array.isArray(ch.important_keywords) && ch.important_keywords.length > 0 && (
+                                    <div className="mt-2 pt-2 border-t border-border/30">
+                                      <div className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
+                                        <Icon name="tag" size={10} />
+                                        핵심 키워드:
+                                      </div>
+                                      <div className="flex flex-wrap gap-1">
+                                        {ch.important_keywords.slice(0, 5).map((keyword, idx) => (
+                                          <Badge key={idx} variant="outline" className="text-xs px-1 py-0 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800">
+                                            {keyword}
+                                          </Badge>
+                                        ))}
+                                        {ch.important_keywords.length > 5 && (
+                                          <Badge variant="outline" className="text-xs px-1 py-0 text-muted-foreground">
+                                            +{ch.important_keywords.length - 5}
+                                          </Badge>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
                               )}
                             </TableCell>
                             <TableCell className="text-xs text-muted-foreground align-top">{ch.id}</TableCell>
@@ -681,6 +704,10 @@ function KnowledgeBase({
                                          scorePercentage >= 60 ? 'text-yellow-600 dark:text-yellow-400' :
                                          'text-red-600 dark:text-red-400';
 
+                        // 향상 정보 표시
+                        const enhancementDetails = result._enhancement_details;
+                        const hasEnhancement = enhancementDetails && enhancementDetails.original_score !== enhancementDetails.final_score;
+
                         return (
                           <div key={index} className="p-4 border rounded-lg bg-muted/20 hover:bg-muted/40 transition-colors">
                             <div className="flex items-center justify-between mb-2">
@@ -691,6 +718,12 @@ function KnowledgeBase({
                                 <div className={`text-sm font-semibold ${scoreColor}`}>
                                   유사도: {scorePercentage}%
                                 </div>
+                                {hasEnhancement && (
+                                  <Badge variant="outline" className="text-xs px-1 bg-green-50 dark:bg-green-900/20 text-green-700 dark:text-green-300 border-green-200 dark:border-green-800">
+                                    <Icon name="trending-up" size={10} className="mr-1" />
+                                    향상됨
+                                  </Badge>
+                                )}
                               </div>
                               <div className="w-16 h-2 bg-gray-200 dark:bg-gray-700 rounded-full overflow-hidden">
                                 <div
@@ -703,6 +736,42 @@ function KnowledgeBase({
                                 />
                               </div>
                             </div>
+
+                            {/* 향상 세부 정보 표시 */}
+                            {hasEnhancement && (
+                              <div className="mb-3 p-2 bg-green-50 dark:bg-green-900/10 rounded border border-green-200 dark:border-green-800">
+                                <div className="text-xs text-green-700 dark:text-green-300 space-y-1">
+                                  <div className="flex justify-between">
+                                    <span>원본 점수:</span>
+                                    <span>{Math.round(enhancementDetails.original_score * 100)}%</span>
+                                  </div>
+                                  {enhancementDetails.keyword_bonus > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>키워드 보너스:</span>
+                                      <span>+{Math.round(enhancementDetails.keyword_bonus * 100)}%</span>
+                                    </div>
+                                  )}
+                                  {enhancementDetails.important_bonus > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>중요키워드 보너스:</span>
+                                      <span>+{Math.round(enhancementDetails.important_bonus * 100)}%</span>
+                                    </div>
+                                  )}
+                                  {enhancementDetails.structure_bonus > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>구조 보너스:</span>
+                                      <span>+{Math.round(enhancementDetails.structure_bonus * 100)}%</span>
+                                    </div>
+                                  )}
+                                  {enhancementDetails.metadata_penalty > 0 && (
+                                    <div className="flex justify-between">
+                                      <span>메타데이터 패널티:</span>
+                                      <span className="text-red-600 dark:text-red-400">-{Math.round(enhancementDetails.metadata_penalty * 100)}%</span>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            )}
                             <div className="text-sm whitespace-pre-wrap break-words leading-relaxed">
                               {highlightSearch ? (
                                 <div dangerouslySetInnerHTML={{

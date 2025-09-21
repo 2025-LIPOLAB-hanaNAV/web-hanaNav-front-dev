@@ -9,7 +9,10 @@
       "Bash(pkill:*)",
       "Bash(rm:*)",
       "Bash(ping:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(curl:*)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm run:*)"
     ],
     "deny": [],
     "ask": []

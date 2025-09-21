@@ -1,11 +1,13 @@
 # 🤖 HanaNav AI Chat Frontend
 
 > **고성능 AI 채팅 프론트엔드** - RAGFlow 기반 지능형 대화 시스템
-
 [![React](https://img.shields.io/badge/React-18.3.1-blue.svg)](https://reactjs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.6.3-blue.svg)](https://www.typescriptlang.org/)
 [![Vite](https://img.shields.io/badge/Vite-6.0.1-646CFF.svg)](https://vitejs.dev/)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3.4.14-38B2AC.svg)](https://tailwindcss.com/)
+
+## 미리보기
+[![버셀에서 바로 확인하기](https://web-hana-nav-front-dev.vercel.app/)]
 
 ## 📋 목차
 

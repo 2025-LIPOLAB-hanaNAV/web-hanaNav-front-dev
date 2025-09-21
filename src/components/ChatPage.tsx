@@ -1155,7 +1155,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
 
         {/* Knowledge Base Dialog */}
         <Dialog open={isKBOpen} onOpenChange={setIsKBOpen}>
-          <DialogContent className="max-w-lg bg-white dark:bg-slate-900 shadow-2xl border border-border/80">
+          <DialogContent className="max-w-lg bg-white/95 dark:bg-slate-900/95 shadow-2xl border border-border/80">
             <DialogHeader>
               <DialogTitle>지식베이스 선택</DialogTitle>
             </DialogHeader>

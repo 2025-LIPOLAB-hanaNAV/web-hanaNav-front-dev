@@ -550,6 +550,29 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       const created = await createChatSession(activeAssistantId, { name: initialName || '새 대화' });
       setSessionId(created.id);
       hasExternalSession.current = true;
+
+      if (created.messages && created.messages.length > 0) {
+        const initialTimestamp = new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' });
+        const seedMessages: ChatMessage[] = created.messages
+          .map((msg, index) => ({
+            id: `${created.id}_seed_${index}`,
+            type: msg.role,
+            content: (msg.content || '').trim(),
+            timestamp: initialTimestamp,
+            state: 'success' as const,
+          }))
+          .filter(msg => msg.content.length > 0);
+
+        if (seedMessages.length > 0) {
+          setMessages(prev => {
+            const existingContents = new Set(prev.map(m => m.content.trim()));
+            const deduped = seedMessages.filter(msg => !existingContents.has(msg.content));
+            if (deduped.length === 0) return prev;
+            return [...deduped, ...prev];
+          });
+        }
+      }
+
       return created.id;
     } finally {
       setSessionCreating(false);

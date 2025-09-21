@@ -864,9 +864,9 @@ export async function converseStream(
     const lines = text.split('\n');
     for (const line of lines) {
       const trimmed = line.trim();
-      if (trimmed === '' || !trimmed.startsWith('data: ')) continue;
+      if (trimmed === '' || !trimmed.startsWith('data:')) continue;
 
-      const dataStr = trimmed.slice(6); // Remove "data: " prefix
+      const dataStr = trimmed.slice(5).trimStart(); // Remove "data:" prefix while tolerating missing space
       if (dataStr === '[DONE]') {
         console.log('RAGFlow OpenAI stream completed with final result:', lastResult);
         // [DONE]을 받았을 때도 바로 return하지 말고 완료 표시만 하기

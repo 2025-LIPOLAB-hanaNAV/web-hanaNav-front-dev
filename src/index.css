@@ -510,6 +510,7 @@
 
   html {
     scroll-behavior: smooth;
+    background: var(--background);
   }
 
   .button-primary {

@@ -46,6 +46,7 @@ async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!res.ok || json.code !== 0) {
     throw new Error(json.message || `Request failed: ${res.status}`);
   }
+  return json.data;
 }
 
 export async function listDatasets(params: ListDatasetsParams = {}): Promise<Dataset[]> {

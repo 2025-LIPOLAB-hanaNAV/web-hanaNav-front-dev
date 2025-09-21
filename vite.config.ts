@@ -76,15 +76,6 @@
         port: hmrPort,
       },
       proxy: {
-        '/api/ragflow': {
-          target: env.VITE_RAGFLOW_BASE_URL || 'http://zipbuntu.iptime.org',
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/api\/ragflow/, ''),
-          headers: {
-            'Authorization': `Bearer ${env.VITE_RAGFLOW_API_KEY || ''}`,
-          },
-        },
         '/api': {
           target: env.VITE_PROXY_BASE_URL || 'https://proxy-hananav-production.up.railway.app',
           changeOrigin: true,

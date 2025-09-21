@@ -8,8 +8,15 @@ export const RAGFLOW_ASSISTANT_PRECISE_ID = import.meta.env.VITE_RAGFLOW_ASSISTA
 export const RAGFLOW_ASSISTANT_SUMMARY_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_SUMMARY_ID as string | undefined;
 
 export function getApiUrl(path: string): string {
-  // Vercel rewrites를 사용하여 상대 경로로 처리
-  return path;
+  if (USE_PROXY) {
+    if (PROXY_BASE_URL) {
+      return `${PROXY_BASE_URL}${path}`;
+    } else {
+      return path;
+    }
+  } else {
+    return path;
+  }
 }
 
 export function requireConfig() {

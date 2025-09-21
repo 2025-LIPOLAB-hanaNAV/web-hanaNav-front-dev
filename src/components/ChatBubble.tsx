@@ -9,8 +9,6 @@ import { Button } from './ui/button';
 import { Icon } from './ui/Icon';
 import { HanaNaviLogo } from './ui/HanaNaviLogo';
 import { cn } from './ui/utils';
-import { EvaluationWidget } from './EvaluationWidget';
-import type { EvaluationResult } from '../types/evaluation';
 
 interface SourceReference {
   id: string;
@@ -36,12 +34,6 @@ interface ChatBubbleProps {
   sources?: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
   onSwitchToPrecise?: () => void;
-  // 평가 관련 props
-  previousMessage?: string; // 이전 사용자 메시지 (질문)
-  assistantId?: string;
-  sessionId?: string;
-  retrievedDocIds?: string[];
-  onEvaluationResult?: (result: EvaluationResult) => void;
 }
 
 export function ChatBubble({
@@ -57,13 +49,7 @@ export function ChatBubble({
   isEvidenceLow = false,
   sources,
   onSourceClick,
-  onSwitchToPrecise,
-  // 평가 관련 props
-  previousMessage,
-  assistantId,
-  sessionId,
-  retrievedDocIds,
-  onEvaluationResult
+  onSwitchToPrecise
 }: ChatBubbleProps) {
   const isUser = type === 'user';
   const isSystem = type === 'system';
@@ -374,23 +360,6 @@ export function ChatBubble({
             </div>
           )}
 
-          {/* Evaluation Widget - Assistant 메시지에만 표시 */}
-          {!isUser && type === 'assistant' && state === 'success' && previousMessage && assistantId && sessionId && (
-            <EvaluationWidget
-              question={previousMessage}
-              answer={content}
-              assistantId={assistantId}
-              sessionId={sessionId}
-              sources={sources?.map(s => ({
-                id: s.id,
-                title: s.title,
-                content: s.content,
-                datasetName: s.datasetName
-              }))}
-              retrievedDocIds={retrievedDocIds}
-              onEvaluationResult={onEvaluationResult}
-            />
-          )}
         </Card>
         
         {timestamp && (

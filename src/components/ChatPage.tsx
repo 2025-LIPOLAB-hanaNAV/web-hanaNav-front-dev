@@ -62,7 +62,6 @@ interface ChatPageProps {
   initialQuery?: string;
   initialFiles?: File[];
   onQueryProcessed?: () => void;
-  onEvaluationResult?: (result: import('../types/evaluation').EvaluationResult) => void;
 }
 type InitialSession = { assistantId: string; sessionId: string } | undefined;
 
@@ -90,7 +89,7 @@ const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: 
   );
 });
 
-export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, onEvaluationResult, initialSession }: ChatPagePropsExtended) {
+export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentMode, setCurrentMode] = useState('quick');
@@ -1249,11 +1248,6 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                   sources={message.sources}
                   onSourceClick={onSourceClick}
                   onSwitchToPrecise={handleSwitchToPrecise}
-                  previousMessage={index > 0 && messages[index - 1]?.type === 'user' ? messages[index - 1].content : undefined}
-                  assistantId={assistantId}
-                  sessionId={sessionId}
-                  retrievedDocIds={message.sources?.map(source => source.id)}
-                  onEvaluationResult={onEvaluationResult}
                 />
                 
               </div>

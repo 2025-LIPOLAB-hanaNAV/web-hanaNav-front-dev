@@ -39,6 +39,9 @@ interface HomePageProps {
 
 export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageProps) {
   const [selectedDepartment, setSelectedDepartment] = useState<string | null>(null);
+  const [isDepartmentSectionExpanded, setIsDepartmentSectionExpanded] = useState(true);
+  const [isPopularSectionExpanded, setIsPopularSectionExpanded] = useState(true);
+  const [isPresetSectionExpanded, setIsPresetSectionExpanded] = useState(true);
 
   const popularQuestions: PopularQuestion[] = [
     { id: '1', question: '고객 민원 처리 절차와 기준은?', category: '소비자보호', count: 234 },
@@ -116,7 +119,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
   ];
 
   return (
-    <div className="min-h-full bg-background">
+    <div className="h-screen bg-background overflow-y-auto">
       {/* Hero Section - Figma Inspired */}
       <div className="relative overflow-hidden min-h-[500px] flex items-center justify-center">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-accent/10 to-primary/5" />
@@ -124,9 +127,9 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
           <div className="max-w-5xl mx-auto text-center space-y-8">
             <div className="space-y-6">
               <div className="flex flex-col items-center space-y-6">
-                <HanaNaviLogo 
-                  size={120} 
-                  className="animate-pulse opacity-90 hover:opacity-100 transition-opacity duration-1000" 
+                <HanaNaviLogo
+                  size={120}
+                  className="animate-pulse opacity-90 hover:opacity-100 transition-opacity duration-1000"
                 />
                 <h1 className="hero-title text-[56px] leading-[70px] font-extrabold text-foreground font-display">
                   어디로 떠나시겠어요?
@@ -136,7 +139,7 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
                 당신의 여정에 함께할게요.
               </p>
             </div>
-            
+
             <div className="mt-12">
               <SearchBar
                 onSearch={onSearch}
@@ -155,162 +158,218 @@ export function HomePage({ onSearch, onQuestionClick, onPresetClick }: HomePageP
         {/* Popular Questions */}
         <section>
           <div className="flex items-center gap-4 mb-8">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsPopularSectionExpanded(!isPopularSectionExpanded)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <Icon
+                name="chevron-down"
+                size={20}
+                className={`transition-transform duration-300 ${isPopularSectionExpanded ? 'rotate-180' : ''}`}
+              />
+              {isPopularSectionExpanded ? '감추기' : '펼치기'}
+            </Button>
             <h2 className="text-2xl font-semibold flex items-center gap-3">
               <Icon name="star" size={28} className="text-primary" />
               인기 방문지
             </h2>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {popularQuestions.map((question) => (
-              <Card
-                key={question.id}
-                className="card-enhanced p-6 hover:shadow-xl cursor-pointer transition-all duration-300 hover:scale-[1.02] h-full"
-                onClick={() => onQuestionClick(question.question)}
-              >
-                <div className="flex flex-col h-full gap-4">
-                  <div className="flex-1">
-                    <p className="text-base font-normal text-foreground mb-4 leading-relaxed font-body">{question.question}</p>
-                    <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
-                      <Badge variant="outline" className="text-sm font-medium px-3 py-1 shrink-0">
-                        {question.category}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground font-medium">
-                        {question.count}회 검색
-                      </span>
-                    </div>
-                  </div>
+          {isPopularSectionExpanded && (
+            <div className="overflow-x-auto pb-4">
+              <div className="flex gap-6 w-max md:grid md:grid-cols-2 lg:grid-cols-3 md:w-auto">
+                {popularQuestions.map((question) => (
+                  <Card
+                    key={question.id}
+                    className="card-enhanced p-6 hover:shadow-xl cursor-pointer transition-all duration-300 hover:scale-[1.02] h-full w-80 md:w-auto flex-shrink-0"
+                    onClick={() => onQuestionClick(question.question)}
+                  >
+                    <div className="flex flex-col h-full gap-4">
+                      <div className="flex-1">
+                        <p className="text-base font-normal text-foreground mb-4 leading-relaxed font-body">{question.question}</p>
+                        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-3">
+                          <Badge variant="outline" className="text-sm font-medium px-3 py-1 shrink-0">
+                            {question.category}
+                          </Badge>
+                          <span className="text-sm text-muted-foreground font-medium">
+                            {question.count}회 검색
+                          </span>
+                        </div>
+                      </div>
 
-                </div>
-              </Card>
-            ))}
-          </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Preset Routes */}
         <section className="font-sans">
           <div className="flex items-center gap-4 mb-8">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setIsPresetSectionExpanded(!isPresetSectionExpanded)}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <Icon
+                name="chevron-down"
+                size={20}
+                className={`transition-transform duration-300 ${isPresetSectionExpanded ? 'rotate-180' : ''}`}
+              />
+              {isPresetSectionExpanded ? '감추기' : '펼치기'}
+            </Button>
             <h2 className="text-2xl font-semibold flex items-center gap-3 font-sans">
               <Icon name="route" size={28} className="text-primary" />
               상황별 프리셋 경로
             </h2>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {presetRoutes.map((route) => (
-              <Card
-                key={route.id}
-                className="card-enhanced p-8 hover:shadow-xl cursor-pointer transition-all duration-300 group hover:scale-[1.02]"
-                onClick={() => onPresetClick(route)}
-              >
-                <div className="flex items-start justify-between">
-                  <div className="flex-1">
-                    <div className="flex items-center gap-4 mb-4">
-                      <span className="text-4xl">{route.icon}</span>
-                      <div>
-                        <h3 className="text-xl font-semibold group-hover:text-primary transition-colors mb-2">
-                          {route.title}
-                        </h3>
-                        <Badge variant="outline" className="text-sm font-semibold px-3 py-1">
-                          {route.category}
-                        </Badge>
-                      </div>
-                    </div>
-                    
-                    <p className="text-base text-muted-foreground mb-4 leading-relaxed">
-                      {route.description}
-                    </p>
-                    
-                    <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
-                      <div className="flex items-center gap-2">
-                        <Icon name="pin" size={16} />
-                        {route.steps}단계
-                      </div>
-                    </div>
-                  </div>
+          {isPresetSectionExpanded && (
+            <div className="overflow-x-auto pb-4">
+              <div className="flex gap-6 w-max md:grid md:grid-cols-2 md:w-auto">
+                {presetRoutes.map((route) => (
+                  <Card
+                    key={route.id}
+                    className="card-enhanced p-8 hover:shadow-xl cursor-pointer transition-all duration-300 group hover:scale-[1.02] w-96 md:w-auto flex-shrink-0"
+                    onClick={() => onPresetClick(route)}
+                  >
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-4 mb-4">
+                          <span className="text-4xl">{route.icon}</span>
+                          <div>
+                            <h3 className="text-xl font-semibold group-hover:text-primary transition-colors mb-2">
+                              {route.title}
+                            </h3>
+                            <Badge variant="outline" className="text-sm font-semibold px-3 py-1">
+                              {route.category}
+                            </Badge>
+                          </div>
+                        </div>
 
-                </div>
-              </Card>
-            ))}
-          </div>
+                        <p className="text-base text-muted-foreground mb-4 leading-relaxed">
+                          {route.description}
+                        </p>
+
+                        <div className="flex items-center gap-4 text-sm text-muted-foreground font-medium">
+                          <div className="flex items-center gap-2">
+                            <Icon name="pin" size={16} />
+                            {route.steps}단계
+                          </div>
+                        </div>
+                      </div>
+
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* Department Shortcuts */}
         <section className="bg-transparent font-sans">
           <div className="flex items-center gap-4 mb-8">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIsDepartmentSectionExpanded(!isDepartmentSectionExpanded);
+                if (isDepartmentSectionExpanded) {
+                  setSelectedDepartment(null);
+                }
+              }}
+              className="flex items-center gap-2 text-muted-foreground hover:text-foreground"
+            >
+              <Icon
+                name="chevron-down"
+                size={20}
+                className={`transition-transform duration-300 ${isDepartmentSectionExpanded ? 'rotate-180' : ''}`}
+              />
+              {isDepartmentSectionExpanded ? '감추기' : '펼치기'}
+            </Button>
             <h2 className="text-2xl font-semibold flex items-center gap-3 font-sans">
               <Icon name="users" size={28} className="text-primary" />
               부서별 자주 찾는 항목
             </h2>
           </div>
-          
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-            {departmentShortcuts.map((dept) => {
-              return (
-                <Card
-                  key={dept.id}
-                  className={cn(
-                    "card-enhanced cursor-pointer transition-all duration-500 hover:scale-110 group overflow-hidden relative",
-                    selectedDepartment === dept.id
-                      ? "ring-2 ring-primary shadow-2xl shadow-primary/20"
-                      : "hover:shadow-2xl hover:shadow-primary/10"
-                  )}
-                  onClick={() => setSelectedDepartment(
-                    selectedDepartment === dept.id ? null : dept.id
-                  )}
-                >
-                  <div className="relative h-full min-h-[140px] flex flex-col items-center justify-center text-center gap-4 p-6">
-                    {/* Background decoration */}
-                    <div className="absolute inset-0 bg-gradient-to-br from-transparent via-primary/5 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                    
-                    {/* Main icon container with enhanced design */}
-                    <div className="relative">
-                      <div className={cn(
-                        "w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-2xl transform transition-all duration-500 group-hover:scale-110 group-hover:rotate-3",
-                        dept.color,
-                        "relative overflow-hidden"
-                      )}>
-                        {/* Shine effect */}
-                        <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
-                        <Icon name={dept.icon as any} size={28} className="text-white relative z-10 drop-shadow-lg" />
-                      </div>
-                      
-                      {/* Floating particles effect */}
-                      <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary/60 rounded-full opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-all duration-500" />
-                      <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-accent/60 rounded-full opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-all duration-700" />
-                    </div>
-                    
-                    {/* Department name with enhanced typography */}
-                    <div className="flex flex-col items-center gap-2">
-                      <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors duration-300">
-                        {dept.name}
-                      </h3>
-                      <div className="w-12 h-1 bg-gradient-to-r from-primary to-accent rounded-full mx-auto transform scale-0 group-hover:scale-100 transition-transform duration-500" />
-                    </div>
-                    
-                    {/* Bottom accent */}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-          
-          {selectedDepartment && (
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {departmentShortcuts
-                .find(d => d.id === selectedDepartment)
-                ?.questions.map((question, index) => (
-                <Button
-                  key={index}
-                  variant="default"
-                  className="text-white font-medium py-3 px-4 border-0"
-                  onClick={() => onQuestionClick(question)}
-                >
-                  {question}
-                </Button>
-              ))}
-            </div>
+
+          {isDepartmentSectionExpanded && (
+            <>
+              <div className="overflow-x-auto pb-4 mb-8">
+                <div className="flex gap-6 w-max md:grid md:grid-cols-2 lg:grid-cols-4 md:w-auto">
+                  {departmentShortcuts.map((dept) => {
+                    return (
+                      <Card
+                        key={dept.id}
+                        className={cn(
+                          "card-enhanced cursor-pointer transition-all duration-500 hover:scale-110 group overflow-hidden relative w-64 md:w-auto flex-shrink-0",
+                          selectedDepartment === dept.id
+                            ? "ring-2 ring-primary shadow-2xl shadow-primary/20"
+                            : "hover:shadow-2xl hover:shadow-primary/10"
+                        )}
+                        onClick={() => setSelectedDepartment(
+                          selectedDepartment === dept.id ? null : dept.id
+                        )}
+                      >
+                        <div className="relative h-full min-h-[140px] flex flex-col items-center justify-center text-center gap-4 p-6">
+                          {/* Background decoration */}
+                          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-primary/5 to-accent/5 opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+
+                          {/* Main icon container with enhanced design */}
+                          <div className="relative">
+                            <div className={cn(
+                              "w-16 h-16 rounded-2xl flex items-center justify-center mx-auto shadow-2xl transform transition-all duration-500 group-hover:scale-110 group-hover:rotate-3",
+                              dept.color,
+                              "relative overflow-hidden"
+                            )}>
+                              {/* Shine effect */}
+                              <div className="absolute inset-0 bg-gradient-to-tr from-transparent via-white/20 to-transparent opacity-0 group-hover:opacity-100 transition-opacity duration-500" />
+                              <Icon name={dept.icon as any} size={28} className="text-white relative z-10 drop-shadow-lg" />
+                            </div>
+
+                            {/* Floating particles effect */}
+                            <div className="absolute -top-1 -right-1 w-3 h-3 bg-primary/60 rounded-full opacity-0 group-hover:opacity-100 group-hover:animate-ping transition-all duration-500" />
+                            <div className="absolute -bottom-1 -left-1 w-2 h-2 bg-accent/60 rounded-full opacity-0 group-hover:opacity-100 group-hover:animate-pulse transition-all duration-700" />
+                          </div>
+
+                          {/* Department name with enhanced typography */}
+                          <div className="flex flex-col items-center gap-2">
+                            <h3 className="text-xl font-medium text-foreground group-hover:text-primary transition-colors duration-300">
+                              {dept.name}
+                            </h3>
+                            <div className="w-12 h-1 bg-gradient-to-r from-primary to-accent rounded-full mx-auto transform scale-0 group-hover:scale-100 transition-transform duration-500" />
+                          </div>
+
+                          {/* Bottom accent */}
+                          <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-primary/20 via-accent/20 to-primary/20 transform scale-x-0 group-hover:scale-x-100 transition-transform duration-500" />
+                        </div>
+                      </Card>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {selectedDepartment && (
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {departmentShortcuts
+                    .find(d => d.id === selectedDepartment)
+                    ?.questions.map((question, index) => (
+                    <Button
+                      key={index}
+                      variant="default"
+                      className="text-white font-medium py-3 px-4 border-0"
+                      onClick={() => onQuestionClick(question)}
+                    >
+                      {question}
+                    </Button>
+                  ))}
+                </div>
+              )}
+            </>
           )}
         </section>
       </div>

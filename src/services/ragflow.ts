@@ -29,7 +29,7 @@ async function ragFetch<T>(path: string, init?: RequestInit): Promise<T> {
 
   if (USE_PROXY) {
     // 프록시 서버 사용
-    url = `/api/ragflow${path}`;
+    url = `/api/ragflow${path.replace('/api/', '/')}`;
   } else {
     // 직접 연결
     if (!RAGFLOW_BASE_URL) throw new Error('Missing VITE_RAGFLOW_BASE_URL');

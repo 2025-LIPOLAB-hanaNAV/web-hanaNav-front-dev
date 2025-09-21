@@ -1,19 +1,35 @@
+const runtimeEnv = (typeof window !== 'undefined' ? (window as any).__ENV__ : undefined) ?? {};
+
+const readEnv = (key: string): string | undefined => {
+  const runtimeValue = runtimeEnv[key];
+  if (typeof runtimeValue === 'string' && runtimeValue.length > 0 && runtimeValue !== 'undefined') {
+    return runtimeValue;
+  }
+  const metaValue = (import.meta.env as any)[key];
+  return typeof metaValue === 'string' ? metaValue : undefined;
+};
+
+const readEnvFlag = (key: string): boolean => {
+  const value = readEnv(key);
+  return value === 'true' || value === '1';
+};
+
 // 프록시 사용 여부와 URL 설정
-const USE_PROXY = import.meta.env.VITE_USE_PROXY === 'true';
-const PROXY_BASE_URL = import.meta.env.VITE_PROXY_BASE_URL as string | undefined;
-const DIRECT_RAGFLOW_URL = import.meta.env.VITE_RAGFLOW_BASE_URL as string | undefined;
+const USE_PROXY = readEnvFlag('VITE_USE_PROXY');
+const PROXY_BASE_URL = readEnv('VITE_PROXY_BASE_URL');
+const DIRECT_RAGFLOW_URL = readEnv('VITE_RAGFLOW_BASE_URL');
 
 // 프록시 사용 시 프록시 URL을 사용하고, 아니면 직접 RAGFlow URL 사용
 export const RAGFLOW_BASE_URL = USE_PROXY ? PROXY_BASE_URL : DIRECT_RAGFLOW_URL;
 export const USE_PROXY_FLAG = USE_PROXY;
-export const RAGFLOW_API_KEY = import.meta.env.VITE_RAGFLOW_API_KEY as string | undefined;
-export const RAGFLOW_ASSISTANT_QUICK_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_QUICK_ID as string | undefined;
-export const RAGFLOW_ASSISTANT_PRECISE_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_PRECISE_ID as string | undefined;
-export const RAGFLOW_ASSISTANT_SUMMARY_ID = import.meta.env.VITE_RAGFLOW_ASSISTANT_SUMMARY_ID as string | undefined;
+export const RAGFLOW_API_KEY = readEnv('VITE_RAGFLOW_API_KEY');
+export const RAGFLOW_ASSISTANT_QUICK_ID = readEnv('VITE_RAGFLOW_ASSISTANT_QUICK_ID');
+export const RAGFLOW_ASSISTANT_PRECISE_ID = readEnv('VITE_RAGFLOW_ASSISTANT_PRECISE_ID');
+export const RAGFLOW_ASSISTANT_SUMMARY_ID = readEnv('VITE_RAGFLOW_ASSISTANT_SUMMARY_ID');
 
 // 리랭커 설정
-export const RAGFLOW_RERANK_MODEL = import.meta.env.VITE_RAGFLOW_RERANK_MODEL as string | undefined;
-export const RAGFLOW_ENABLE_RERANK = import.meta.env.VITE_RAGFLOW_ENABLE_RERANK === 'true';
+export const RAGFLOW_RERANK_MODEL = readEnv('VITE_RAGFLOW_RERANK_MODEL');
+export const RAGFLOW_ENABLE_RERANK = readEnvFlag('VITE_RAGFLOW_ENABLE_RERANK');
 
 // 리랭커 설정을 가져오는 유틸리티 함수
 export function getRerankConfig(): { rerank_id?: string } {

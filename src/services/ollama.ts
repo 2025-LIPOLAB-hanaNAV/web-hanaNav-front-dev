@@ -106,35 +106,60 @@ function getFallbackScore(metric: string, response: string): number {
 }
 
 // Ollama 서버 URL 동적 가져오기
-function getOllamaBaseUrl(): string {
-  // 1. Vite 환경변수 확인 (VITE_ 접두사)
+const getEnvVar = (key: string): string | undefined => {
   try {
-    if (import.meta?.env?.VITE_OLLAMA_URL) {
-      console.log('🔧 Using Vite env variable (VITE_OLLAMA_URL):', import.meta.env.VITE_OLLAMA_URL);
-      return import.meta.env.VITE_OLLAMA_URL;
+    if (typeof window !== 'undefined' && (window as any)?.__ENV__?.[key]) {
+      const value = (window as any).__ENV__[key];
+      if (typeof value === 'string' && value.length > 0 && value !== 'undefined') {
+        return value;
+      }
     }
-  } catch (e) {
-    // import.meta가 지원되지 않는 환경
+  } catch {
+    /* noop */
   }
 
-  // 2. CRA 환경변수 확인 (REACT_APP_ 접두사)
-  if (typeof process !== 'undefined' && process.env?.REACT_APP_OLLAMA_URL) {
-    console.log('🔧 Using CRA env variable (REACT_APP_OLLAMA_URL):', process.env.REACT_APP_OLLAMA_URL);
-    return process.env.REACT_APP_OLLAMA_URL;
+  try {
+    const viteValue = (import.meta as any)?.env?.[key];
+    if (typeof viteValue === 'string' && viteValue.length > 0) {
+      return viteValue;
+    }
+  } catch {
+    /* noop */
   }
 
-  // 3. 개발 환경 감지
+  if (typeof process !== 'undefined' && (process.env as any)?.[key]) {
+    const value = (process.env as any)[key];
+    if (typeof value === 'string' && value.length > 0) {
+      return value;
+    }
+  }
+
+  return undefined;
+};
+
+function getOllamaBaseUrl(): string {
+  const runtimeValue = getEnvVar('VITE_OLLAMA_URL');
+  if (runtimeValue) {
+    console.log('🔧 Using runtime env variable (VITE_OLLAMA_URL):', runtimeValue);
+    return runtimeValue;
+  }
+
+  const reactAppValue = getEnvVar('REACT_APP_OLLAMA_URL');
+  if (reactAppValue) {
+    console.log('🔧 Using CRA env variable (REACT_APP_OLLAMA_URL):', reactAppValue);
+    return reactAppValue;
+  }
+
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     console.log('🔧 Detected hostname:', hostname);
 
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
       console.log('🔧 Using localhost URL');
-      return 'http://localhost:11434'; // 로컬 개발환경 기본 포트
+      return 'http://localhost:11434';
     }
   }
 
-  // 4. Docker 환경 (fallback)
   console.log('🔧 Using Docker fallback URL');
   return 'http://host.docker.internal:11435';
 }
@@ -705,17 +730,14 @@ async function searchKnowledgeBase(question: string): Promise<Array<{doc_id: str
 
 // 백엔드 RAG URL 가져오기
 function getBackendRAGUrl(): string | null {
-  // 환경변수에서 백엔드 RAG URL 확인
-  try {
-    if (import.meta?.env?.VITE_BACKEND_RAG_URL) {
-      return import.meta.env.VITE_BACKEND_RAG_URL;
-    }
-  } catch (e) {
-    // import.meta가 지원되지 않는 환경
+  const runtimeValue = getEnvVar('VITE_BACKEND_RAG_URL');
+  if (runtimeValue) {
+    return runtimeValue;
   }
 
-  if (typeof process !== 'undefined' && process.env?.REACT_APP_BACKEND_RAG_URL) {
-    return process.env.REACT_APP_BACKEND_RAG_URL;
+  const reactAppValue = getEnvVar('REACT_APP_BACKEND_RAG_URL');
+  if (reactAppValue) {
+    return reactAppValue;
   }
 
   // 개발 환경에서 기본값
@@ -1746,13 +1768,8 @@ export function getCurrentOllamaUrl(): string {
   console.log('🔍 Current Ollama URL:', currentUrl);
   console.log('🔍 Environment check:');
 
-  try {
-    console.log('  - import.meta.env.VITE_OLLAMA_URL:', import.meta?.env?.VITE_OLLAMA_URL);
-  } catch (e) {
-    console.log('  - import.meta.env.VITE_OLLAMA_URL: not available');
-  }
-
-  console.log('  - process.env.REACT_APP_OLLAMA_URL:', (process as any)?.env?.REACT_APP_OLLAMA_URL);
+  console.log('  - runtime VITE_OLLAMA_URL:', getEnvVar('VITE_OLLAMA_URL'));
+  console.log('  - runtime REACT_APP_OLLAMA_URL:', getEnvVar('REACT_APP_OLLAMA_URL'));
   console.log('  - window.location.hostname:', (typeof window !== 'undefined') ? window.location.hostname : 'undefined');
   return currentUrl;
 }

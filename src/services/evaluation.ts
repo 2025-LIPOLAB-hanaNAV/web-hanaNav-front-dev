@@ -15,22 +15,41 @@ import type {
 
 // Vite 번들 환경에서도 안전하게 env 값을 읽어오기 위한 유틸리티
 const runtimeEnv = (() => {
+  const merged: Record<string, unknown> = {};
+
+  const assign = (source?: Record<string, unknown>) => {
+    if (!source) return;
+    Object.entries(source).forEach(([key, value]) => {
+      if (value !== undefined && value !== null && value !== '') {
+        merged[key] = value;
+      }
+    });
+  };
+
+  try {
+    if (typeof window !== 'undefined' && (window as any)?.__ENV__) {
+      assign((window as any).__ENV__ as Record<string, unknown>);
+    }
+  } catch (error) {
+    console.warn('Failed to access window.__ENV__:', error);
+  }
+
   try {
     if (typeof import.meta !== 'undefined' && (import.meta as any)?.env) {
-      return (import.meta as any).env;
+      assign((import.meta as any).env as Record<string, unknown>);
     }
   } catch (error) {
     console.warn('Failed to access import.meta.env:', error);
   }
 
   if (typeof process !== 'undefined' && (process as any)?.env) {
-    return (process as any).env;
+    assign((process as any).env as Record<string, unknown>);
   }
 
-  return {} as Record<string, unknown>;
+  return merged;
 })();
 
-const getEnvValue = (key: string): unknown => (runtimeEnv as Record<string, unknown>)[key];
+const getEnvValue = (key: string): unknown => runtimeEnv[key];
 
 const resolveEnvFlag = (value: unknown, fallback = false): boolean => {
   if (typeof value === 'boolean') return value;

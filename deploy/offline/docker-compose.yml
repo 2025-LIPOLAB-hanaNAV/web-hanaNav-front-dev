@@ -1,0 +1,24 @@
+version: "3.8"
+
+services:
+  hananav-web:
+    image: ${HANANAV_IMAGE:-web-hananav-front:offline}
+    container_name: hananav-web-offline
+    ports:
+      - "${HANANAV_HTTP_PORT:-3000}:80"
+    environment:
+      VITE_RAGFLOW_BASE_URL: ${VITE_RAGFLOW_BASE_URL:-http://host.docker.internal:7800}
+      VITE_RAGFLOW_API_KEY: ${VITE_RAGFLOW_API_KEY:-changeme}
+      VITE_RAGFLOW_ASSISTANT_QUICK_ID: ${VITE_RAGFLOW_ASSISTANT_QUICK_ID:-}
+      VITE_RAGFLOW_ASSISTANT_PRECISE_ID: ${VITE_RAGFLOW_ASSISTANT_PRECISE_ID:-}
+      VITE_RAGFLOW_ASSISTANT_SUMMARY_ID: ${VITE_RAGFLOW_ASSISTANT_SUMMARY_ID:-}
+      VITE_RAGFLOW_ENABLE_RERANK: ${VITE_RAGFLOW_ENABLE_RERANK:-false}
+      VITE_RAGFLOW_RERANK_MODEL: ${VITE_RAGFLOW_RERANK_MODEL:-}
+      VITE_OLLAMA_URL: ${VITE_OLLAMA_URL:-http://host.docker.internal:11435}
+      VITE_ENABLE_RAG_EVALUATION: ${VITE_ENABLE_RAG_EVALUATION:-false}
+      VITE_OLLAMA_MODEL: ${VITE_OLLAMA_MODEL:-gemma3:12b}
+      VITE_USE_PROXY: ${VITE_USE_PROXY:-false}
+      VITE_PROXY_BASE_URL: ${VITE_PROXY_BASE_URL:-}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    restart: unless-stopped

@@ -86,7 +86,7 @@
           },
         },
         '/api': {
-          target: env.VITE_PROXY_BASE_URL || 'http://localhost:8000',
+          target: env.VITE_PROXY_BASE_URL || 'https://proxy-hananav-production.up.railway.app',
           changeOrigin: true,
           secure: false,
         },

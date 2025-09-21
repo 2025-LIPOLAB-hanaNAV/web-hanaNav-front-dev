@@ -420,32 +420,34 @@ export async function converseOnce(chatId: string, body: { question: string; ses
     headers['Authorization'] = `Bearer ${RAGFLOW_API_KEY}`;
   }
 
-  const res = await fetch(url, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({ ...body, stream: false }),
-  });
-  const ct = res.headers.get('content-type') || '';
-  if (!res.ok) {
-    let message = `Request failed: ${res.status}`;
-    try { const j = await res.json() as any; message = j?.message || message; } catch {}
-    throw new Error(message);
-  }
-  // Try JSON first
-  if (ct.includes('application/json')) {
-    const j = await res.json() as any;
-    // Handle RAGFlow native schema { code, data: { answer, reference, session_id } }
-    if (j && typeof j === 'object' && ('data' in j)) {
-      const data = j.data || {};
-      if (data && typeof data === 'object') {
-        if (data.answer || data.session_id) {
-          return { answer: data.answer, reference: data.reference, session_id: data.session_id };
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ ...body, stream: false }),
+    });
+    const ct = res.headers.get('content-type') || '';
+    if (!res.ok) {
+      let message = `Request failed: ${res.status}`;
+      try { const j = await res.json() as any; message = j?.message || message; } catch {}
+      throw new Error(message);
+    }
+    // Try JSON first
+    if (ct.includes('application/json')) {
+      const j = await res.json() as any;
+      // Handle RAGFlow native schema { code, data: { answer, reference, session_id } }
+      if (j && typeof j === 'object' && ('data' in j)) {
+        const data = j.data || {};
+        if (data && typeof data === 'object') {
+          if (data.answer || data.session_id) {
+            return { answer: data.answer, reference: data.reference, session_id: data.session_id };
+          }
         }
-      }
 
-      // Unknown JSON shape
-      console.warn('RAGFlow unknown JSON response shape:', j);
-      return {};
+        // Unknown JSON shape
+        console.warn('RAGFlow unknown JSON response shape:', j);
+        return {};
+      }
     }
     // Fallback: parse SSE-like buffered text
     const text = await res.text();
@@ -459,7 +461,6 @@ export async function converseOnce(chatId: string, body: { question: string; ses
     console.warn('RAGFlow: No valid response found');
     return {};
   } catch (error: any) {
-    clearTimeout(timeoutId);
     if (error.name === 'AbortError') {
       throw new Error('Request timeout: 응답 시간이 5분을 초과했습니다.');
     }

@@ -35,6 +35,7 @@ interface ChatBubbleProps {
   isEvidenceLow?: boolean;
   sources?: SourceReference[];
   onSourceClick?: (source: SourceReference) => void;
+  onNavigateToKnowledgeBase?: (datasetId: string, docId?: string, chunkId?: string) => void;
   onSwitchToPrecise?: () => void;
 }
 
@@ -51,6 +52,7 @@ export function ChatBubble({
   isEvidenceLow = false,
   sources,
   onSourceClick,
+  onNavigateToKnowledgeBase,
   onSwitchToPrecise
 }: ChatBubbleProps) {
   const isUser = type === 'user';
@@ -282,8 +284,20 @@ export function ChatBubble({
                           className="inline-flex items-center gap-1 text-primary hover:text-primary/80 underline decoration-dotted underline-offset-2 cursor-pointer font-medium"
                           onClick={(e) => {
                             e.preventDefault();
-                            console.log('🔗 출처 링크 클릭:', sources[sourceIndex]);
-                            onSourceClick?.(sources[sourceIndex]);
+                            const source = sources[sourceIndex];
+                            console.log('🔗 출처 링크 클릭:', source);
+
+                            // Knowledge Base로 이동
+                            if (onNavigateToKnowledgeBase && source.datasetId) {
+                              onNavigateToKnowledgeBase(
+                                source.datasetId,
+                                source.documentId,
+                                source.chunkId
+                              );
+                            } else {
+                              // 기존 방식도 유지
+                              onSourceClick?.(source);
+                            }
                           }}
                           title={`출처: ${sources[sourceIndex].title}`}
                           {...props}

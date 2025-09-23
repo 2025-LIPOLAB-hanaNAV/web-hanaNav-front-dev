@@ -14,7 +14,8 @@
       "Bash(npm run typecheck:*)",
       "Bash(npm run:*)",
       "Read(//mnt/c/Users/JJ/Pictures/Screenshots/**)",
-      "Bash(find:*)"
+      "Bash(find:*)",
+      "Bash(netstat:*)"
     ],
     "deny": [],
     "ask": []

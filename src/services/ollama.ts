@@ -150,17 +150,20 @@ function getOllamaBaseUrl(): string {
     return reactAppValue;
   }
 
+  // 브라우저 환경에서는 현재 호스트의 Vite dev server를 통해 프록시 접근
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
-    console.log('🔧 Detected hostname:', hostname);
+    const port = window.location.port;
+    console.log('🔧 Detected hostname:', hostname, 'port:', port);
 
-    if (hostname === 'localhost' || hostname === '127.0.0.1') {
-      console.log('🔧 Using localhost URL');
-      return 'http://localhost:11434';
-    }
+    // Vite dev server를 통해 프록시된 경로로 접근
+    const proxyBaseUrl = `${window.location.protocol}//${hostname}:${port}`;
+    console.log('🔧 Using Vite proxy URL for browser:', proxyBaseUrl);
+    return proxyBaseUrl;
   }
 
-  console.log('🔧 Using Docker fallback URL');
+  // 서버 사이드나 Docker 환경에서만 host.docker.internal 사용
+  console.log('🔧 Using Docker internal URL for server-side');
   return 'http://host.docker.internal:11435';
 }
 

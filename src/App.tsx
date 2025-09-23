@@ -108,6 +108,18 @@ export default function App() {
     setCurrentView('documents');
   };
 
+  const handleNavigateToKnowledgeBase = (datasetId: string, docId?: string, chunkId?: string) => {
+    console.log('Navigate to Knowledge Base:', { datasetId, docId, chunkId });
+    // 벡터 DB 메뉴(Knowledge Base)로 이동하며 데이터셋 정보 표시
+    setKnowledgeBaseProps({
+      initialDatasetId: datasetId,
+      initialDocId: docId,
+      initialChunkId: chunkId,
+      initialHighlight: ''
+    });
+    setCurrentView('documents');
+  };
+
   const handleEvaluationResult = (result: EvaluationResult) => {
     console.log('Evaluation result received:', result);
     setEvaluationResults(prev => [result, ...prev.slice(0, 99)]); // 최대 100개까지만 저장
@@ -129,6 +141,7 @@ export default function App() {
             key={initialSession ? `${initialSession.assistantId}:${initialSession.sessionId}` : 'chat-root'}
             onEvidenceClick={handleEvidenceClick}
             onSourceClick={handleSourceClick}
+            onNavigateToKnowledgeBase={handleNavigateToKnowledgeBase}
             initialQuery={searchQuery}
             initialFiles={searchFiles}
             initialSession={initialSession}

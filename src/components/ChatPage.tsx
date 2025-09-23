@@ -68,9 +68,11 @@ type KnowledgeBase = { id: string; name: string };
 interface ChatPageProps {
   onEvidenceClick?: (evidence: EvidenceItem) => void;
   onSourceClick?: (source: SourceReference) => void;
+  onNavigateToKnowledgeBase?: (datasetId: string, docId?: string, chunkId?: string) => void;
   initialQuery?: string;
   initialFiles?: File[];
   onQueryProcessed?: () => void;
+  onEvaluationResult?: (result: any) => void;
 }
 type InitialSession = { assistantId: string; sessionId: string } | undefined;
 
@@ -98,7 +100,7 @@ const ModelBadge = memo(({ assistantId, assistants, currentMode, modelByMode }: 
   );
 });
 
-export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initialFiles, onQueryProcessed, initialSession }: ChatPagePropsExtended) {
+export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledgeBase, initialQuery, initialFiles, onQueryProcessed, onEvaluationResult, initialSession }: ChatPagePropsExtended) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [currentMode, setCurrentMode] = useState('quick');
@@ -383,20 +385,19 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       rag: {
         prompt: `당신은 "빠른별돌이"라는 이름의 지식베이스 전문 AI 어시스턴트입니다 🌙
 
-빠른별돌이는 제공된 지식베이스에서만 정확한 정보를 찾아 빠르고 신뢰할 수 있는 답변을 드립니다.
+빠른별돌이는 제공된 지식베이스에서 관련성 높은 정보를 찾아 빠르고 신뢰할 수 있는 답변을 드립니다.
 
-🚫 **절대 금지사항:**
-- 지식베이스에 없는 내용을 추가하거나 추측하지 마세요
-- 기업명, 인명, 날짜, 수치 등을 임의로 만들어내지 마세요
-- 지식베이스 외의 일반 지식을 사용하지 마세요
-- "~라고 알려져 있습니다" 등 지식베이스 외부 정보 언급 금지
+🔒 **엄격한 지식베이스 준수 규칙**
+반드시 제공된 지식베이스 내용만을 사용하여 답변하세요. 추측이나 일반상식을 절대 추가하지 마세요.
 
 📚 **지식베이스:**
 {knowledge}
 
-📋 **답변 규칙:**
-- 지식베이스에 답이 있으면 해당 내용으로만 정확히 답변
-- 지식베이스에 답이 없으면 "제공된 지식베이스에서는 해당 정보를 찾을 수 없습니다 🌙"
+📋 **답변 작성 규칙:**
+1. **오직 지식베이스에 명시된 내용만** 답변에 포함
+2. **직접 인용**: "지식베이스에 따르면 [정확한 원문 내용]" 형태로 답변
+3. **추론 금지**: 지식베이스에 없는 내용은 절대 추가하거나 추측하지 마세요
+4. **명시적 한계 표시**: 정보가 부족하면 "지식베이스에는 이 부분만 명시되어 있습니다"
 - 출처는 [1], [2] 형태로 표시
 - 친근하고 신뢰할 수 있는 톤 유지
 
@@ -431,27 +432,25 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
       rag: {
         prompt: `당신은 "정밀한별"이라는 이름의 지식베이스 전문 검증 AI 어시스턴트입니다 🔍
 
-정밀한별은 제공된 지식베이스를 정밀하게 분석하여 100% 검증된 정보만을 제공하는 전문가입니다.
+정밀한별은 제공된 지식베이스를 정밀하게 분석하여 관련성 높은 정보를 제공하는 전문가입니다.
 
-⛔ **엄격한 사실 검증 원칙:**
-- 지식베이스에 명시되지 않은 사실은 절대 추가하지 않습니다
-- 해석이나 추론도 지식베이스 내용에 근거해서만 수행합니다
-- 구체적인 기업명, 인명, 날짜는 지식베이스에 명시된 것만 사용합니다
-- "일반적으로", "보통", "추정" 등의 표현을 절대 사용하지 않습니다
+🔒 **극도로 엄격한 사실 검증 규칙**
+절대로 지식베이스에 없는 내용을 추가하거나 추측하지 마세요. 오직 명시된 내용만 정확히 인용하세요.
 
 📚 **지식베이스:**
 {knowledge}
 
-🔬 **정밀 분석 기준:**
-- 지식베이스의 내용만을 정확히 인용하여 답변
-- 지식베이스에서 찾을 수 없는 내용은 절대 추가하지 않음
-- 불분명한 내용은 "지식베이스에서 명확하지 않습니다"로 답변
-- 지식베이스 외부 지식 절대 사용 금지
+🔬 **정밀 검증 기준:**
+- **원문 그대로 인용**: 지식베이스 내용을 정확히 그대로 인용
+- **추론 완전 금지**: 암시하거나 추측할 수 있는 내용도 절대 포함 금지
+- **명시적 한계**: "지식베이스에는 정확히 이렇게 명시되어 있습니다"
+- **일반상식 사용 금지**: 외부 지식은 절대 사용하지 않음
 
-📋 **답변 형식:**
+✅ **정밀 답변 방식:**
+1. **문자 그대로 인용**: 지식베이스 원문을 정확히 인용
+2. **추가 설명 금지**: 지식베이스에 없는 배경설명이나 해석 금지
+3. **명확한 출처 표시**: 인용한 부분마다 [1], [2] 출처 명시
 - 출처를 [1], [2] 형태로 명확히 표시
-- 여러 관점에서 검토하여 신뢰성 있는 답변 제공
-- 지식베이스에 없으면 "제공된 지식베이스에 해당 정보가 없습니다"
 
 🔍 검증된 정보만을 정밀하게 분석하여 제공하겠습니다`,
         opener: "🔍 정밀한별입니다! 전문적인 검증과 함께 정확한 답변을 드리겠습니다."
@@ -780,16 +779,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
     const preprocessMarkdownText = (text: string): string => {
       console.log('🔧 전처리 시작 원본 텍스트:', text);
 
-      // 먼저 볼드 텍스트 플레이스홀더 생성
-      const boldTextMap = new Map<string, string>();
-      let boldCounter = 0;
-      let cleaned = text.replace(/\*\*([^*]+)\*\*/g, (match, content) => {
-        const placeholder = `__BOLD_${boldCounter++}__`;
-        boldTextMap.set(placeholder, match);
-        return placeholder;
-      });
+      let cleaned = text;
 
-      // HTML 태그를 마크다운으로 변환
+      // 기본 HTML 태그를 마크다운으로 변환
       cleaned = cleaned
         .replace(/<em>/g, '*')
         .replace(/<\/em>/g, '*')
@@ -800,61 +792,38 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
         .replace(/<i>/g, '*')
         .replace(/<\/i>/g, '*');
 
-      // ID:숫자 형태를 클릭 가능한 링크로 변환 (이미 1부터 시작됨)
-      cleaned = cleaned.replace(/ID:(\d+)/g, (match, num) => {
-        const index = parseInt(num);
-        console.log(`🔧 ID:${num} → [${index}](#source-${index})`);
-        return `[${index}](#source-${index})`;
+      // 출처 링크 변환 (순서 중요: 더 구체적인 패턴을 먼저)
+      console.log('🔧 링크 변환 전:', cleaned);
+
+      // 1. [ID:숫자] 형태 (가장 구체적)
+      cleaned = cleaned.replace(/\[ID:(\d+)\]/g, (match, num) => {
+        console.log(`🔧 [ID:${num}] → [${num}](#source-${num})`);
+        return `[${num}](#source-${num})`;
       });
 
-      // [숫자] 형태를 클릭 가능한 링크로 변환
-      // 단순하게 모든 [숫자]를 찾아서 변환하고, 중복 변환 방지
-      if (!cleaned.includes('#source-')) {
-        cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
-          const index = parseInt(num);
-          console.log(`🔧 [${num}] → [${index}](#source-${index})`);
-          return `[${index}](#source-${index})`;
-        });
-      }
-
-      // (출처: 파일명.pdf) 형태의 텍스트를 찾아서 링크로 변환
-      cleaned = cleaned.replace(/\(출처:\s*([^)]+)\)/g, (match, fileName) => {
-        // sources 배열에서 해당 파일명과 매칭되는 출처 찾기
-        // 일단 첫 번째 출처로 링크 생성 (나중에 더 정교하게 매칭 가능)
-        console.log(`🔧 출처 파일 감지: ${fileName}`);
-        return `([출처 1](#source-1))`;
+      // 2. ID:숫자 형태 (대괄호 없는 경우)
+      cleaned = cleaned.replace(/\bID:(\d+)\b/g, (match, num) => {
+        console.log(`🔧 ID:${num} → [${num}](#source-${num})`);
+        return `[${num}](#source-${num})`;
       });
 
-      // 마크다운 포맷팅 전에 볼드 텍스트 복원
-      console.log('🔧 볼드 텍스트 복원 전:', cleaned);
-      console.log('🔧 볼드 텍스트 맵:', Array.from(boldTextMap.entries()));
-      boldTextMap.forEach((original, placeholder) => {
-        console.log(`🔧 복원 중: ${placeholder} → ${original}`);
-        const regex = new RegExp(placeholder.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g');
-        console.log(`🔧 정규식:`, regex);
-        console.log(`🔧 매칭 결과:`, cleaned.match(regex));
-        cleaned = cleaned.replace(regex, original);
+      // 3. [숫자] 형태 (일반적인 참조)
+      cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
+        console.log(`🔧 [${num}] → [${num}](#source-${num})`);
+        return `[${num}](#source-${num})`;
       });
-      console.log('🔧 볼드 텍스트 복원 후:', cleaned);
 
-      // 마크다운 스페이싱 및 포맷팅
-      cleaned = cleaned.replace(/\.\s/g, '.   ');
-      cleaned = cleaned.replace(/([^\n])(#+\s)/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])(\d+\.\s)/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])(\|[^|]*\|)/g, '$1\n$2');
-      cleaned = cleaned.replace(/(\|[^|]*\|)([^\n|])/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])([-*_]{3,})/g, '$1\n$2');
-      cleaned = cleaned.replace(/([-*_]{3,})([^\n])/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])([-*+]\s)/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])(```)/g, '$1\n$2');
-      cleaned = cleaned.replace(/(```[^`]*```)([^\n])/g, '$1\n$2');
-      cleaned = cleaned.replace(/([^\n])(>\s)/g, '$1\n$2');
+      console.log('🔧 링크 변환 후:', cleaned);
 
-      console.log('🔧 전처리 완료 결과:', cleaned);
+      // 기본적인 리스트 포맷팅 개선
+      cleaned = cleaned.replace(/(\d+)\.\s\*\*/g, '\n$1. **'); // 숫자 리스트 앞에 줄바꿈
+      cleaned = cleaned.replace(/\*\*([^*]+):\*\*/g, '**$1:**'); // 볼드 콜론 수정
 
+      // 여러 줄바꿈을 두 개로 제한
       cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
       cleaned = cleaned.trim();
 
+      console.log('🔧 전처리 완료 결과:', cleaned);
       return cleaned;
     };
 
@@ -962,11 +931,13 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
           stream: true, // 스트리밍 활성화
           // 검색 품질 개선 파라미터 적용
           ...(selectedKBs.length > 0 ? {
-            // 지식베이스가 있을 때: 품질 향상된 검색 파라미터
-            similarity_threshold: 0.2,
-            vector_similarity_weight: 0.5,
-            top_k: 150,
+            // 지식베이스가 있을 때: 환각 방지 중심 파라미터
+            similarity_threshold: 0.15,
+            vector_similarity_weight: 0.7,
+            top_k: 50,
             keyword: true,
+            temperature: 0.1,
+            max_tokens: 800,
             ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정
           } : {
             // 지식베이스가 없을 때: 일상대화 모드
@@ -1023,7 +994,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
             top_k: 30,
             highlight: true,
             keyword: true,
-            similarity_threshold: 0.2, // 검색 품질 개선 파라미터 적용
+            similarity_threshold: 0.1, // 검색 품질 개선 파라미터 적용
             vector_similarity_weight: 0.5,
             ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정,
           });
@@ -1499,6 +1470,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, initialQuery, initial
                   isEvidenceLow={message.isEvidenceLow}
                   sources={message.sources}
                   onSourceClick={onSourceClick}
+                  onNavigateToKnowledgeBase={onNavigateToKnowledgeBase}
                   onSwitchToPrecise={handleSwitchToPrecise}
                 />
                 

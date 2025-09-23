@@ -1,20 +1,33 @@
+import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react-swc';
+import path from 'path';
 
-  import { defineConfig, loadEnv } from 'vite';
-  import react from '@vitejs/plugin-react-swc';
-  import path from 'path';
+export default defineConfig(({ mode }) => {
+  const env = loadEnv(mode, process.cwd(), '');
 
-  export default defineConfig(({ mode }) => {
-    const env = loadEnv(mode, process.cwd(), '');
-    const host = env.DEV_SERVER_HOST || '0.0.0.0';
-    const port = Number(env.DEV_SERVER_PORT || 18080);
-    const allowed = (env.DEV_ALLOWED_HOSTS || 'localhost')
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean);
-    const hmrHost = env.DEV_HMR_HOST || undefined;
-    const hmrPort = env.DEV_HMR_PORT ? Number(env.DEV_HMR_PORT) : undefined;
+  const host = env.DEV_SERVER_HOST || '0.0.0.0';
+  const port = Number(env.DEV_SERVER_PORT || 18080);
 
-    return {
+  // Ollama 서버 주소 결정 (환경별로 다름)
+  const ollamaTarget = env.VITE_OLLAMA_PROXY_TARGET ||
+    (process.platform === 'win32'
+      ? 'http://172.22.42.12:11435'  // Windows → WSL IP로 직접 접근
+      : 'http://host.docker.internal:11435'  // WSL/Linux → 내부 Docker 접근
+    );
+
+  const allowed = (env.DEV_ALLOWED_HOSTS || 'localhost')
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const hmrHost = env.DEV_HMR_HOST || undefined;
+  const hmrPort = env.DEV_HMR_PORT ? Number(env.DEV_HMR_PORT) : port;
+  const hmrProtocol = env.DEV_HMR_PROTOCOL || 'ws';
+  const hmrClientPort = env.DEV_HMR_CLIENT_PORT
+    ? Number(env.DEV_HMR_CLIENT_PORT)
+    : undefined;
+
+  return {
     plugins: [react()],
     resolve: {
       extensions: ['.js', '.jsx', '.ts', '.tsx', '.json'],
@@ -28,8 +41,14 @@
         'next-themes@0.4.6': 'next-themes',
         'lucide-react@0.487.0': 'lucide-react',
         'input-otp@1.4.2': 'input-otp',
-        'figma:asset/f9d07d38f0acec59ac606b39b181a4ae8fbe1cd1.png': path.resolve(__dirname, './src/assets/f9d07d38f0acec59ac606b39b181a4ae8fbe1cd1.png'),
-        'figma:asset/4510f7fccec88b7d96239af9f1cbab26b3e402cd.png': path.resolve(__dirname, './src/assets/4510f7fccec88b7d96239af9f1cbab26b3e402cd.png'),
+        'figma:asset/f9d07d38f0acec59ac606b39b181a4ae8fbe1cd1.png': path.resolve(
+          __dirname,
+          './src/assets/f9d07d38f0acec59ac606b39b181a4ae8fbe1cd1.png'
+        ),
+        'figma:asset/4510f7fccec88b7d96239af9f1cbab26b3e402cd.png': path.resolve(
+          __dirname,
+          './src/assets/4510f7fccec88b7d96239af9f1cbab26b3e402cd.png'
+        ),
         'embla-carousel-react@8.6.0': 'embla-carousel-react',
         'cmdk@1.1.1': 'cmdk',
         'class-variance-authority@0.7.1': 'class-variance-authority',
@@ -67,14 +86,50 @@
       outDir: 'dist',
     },
     server: {
-      port,
-      host,
-      allowedHosts: allowed,
-      open: true,
+      host: '0.0.0.0', // 모든 인터페이스에서 접근 허용
+      port: 18080,
+      open: false,
+      allowedHosts: allowed, // WSL IP도 허용
       hmr: {
-        host: hmrHost,
-        port: hmrPort,
+        host: process.env.DEV_HMR_HOST,         // zipbuntu.iptime.org
+        port: process.env.DEV_HMR_PORT ? Number(process.env.DEV_HMR_PORT) : 18080,
+        protocol: process.env.DEV_HMR_PROTOCOL || 'ws',
+        clientPort: process.env.DEV_HMR_CLIENT_PORT
+          ? Number(process.env.DEV_HMR_CLIENT_PORT)
+          : undefined,
       },
+      strictPort: true, // (선택) 포트 점유 시 바로 실패
+      proxy: {
+        // Ollama API 전체 프록시 - 모든 /api/ 경로를 Ollama로 프록시
+        '/api/': {
+          target: ollamaTarget,
+          changeOrigin: true,
+          secure: false,
+          rewrite: (path) => path,
+          configure: (proxy, options) => {
+            console.log(`🎯 Ollama proxy target: ${ollamaTarget}`);
+            proxy.on('proxyReq', (proxyReq, req, res) => {
+              console.log(`🔄 Proxying ${req.method} ${req.url} to ${ollamaTarget}`);
+              console.log(`📤 Headers:`, req.headers);
+
+              // Content-Type 헤더 강제 설정
+              if (req.method === 'POST') {
+                proxyReq.setHeader('Content-Type', 'application/json');
+                proxyReq.setHeader('Accept', 'application/json');
+              }
+            });
+            proxy.on('proxyRes', (proxyRes, req, res) => {
+              console.log(`✅ Ollama response ${proxyRes.statusCode} for ${req.url}`);
+              if (proxyRes.statusCode !== 200) {
+                console.log(`📥 Response headers:`, proxyRes.headers);
+              }
+            });
+            proxy.on('error', (err, req, res) => {
+              console.error(`❌ Proxy error for ${req.url}:`, err.message);
+            });
+          }
+        }
+      }
     },
   };
-  });
+});

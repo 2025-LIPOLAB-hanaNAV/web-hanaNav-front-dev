@@ -266,29 +266,41 @@ export function AdminConsole() {
       // RAGFlow API에서 문서 수 가져오기
       const documentsResponse = await fetch('/api/documents/stats');
       if (documentsResponse.ok) {
-        const documentsData = await documentsResponse.json();
+        const documentsRaw = await documentsResponse.json();
+        const documentsData = documentsRaw?.data ?? documentsRaw;
         setSystemMetrics(prev => ({
           ...prev,
-          totalDocuments: documentsData.total || 0
+          totalDocuments: Number(documentsData?.total ?? documentsData?.totalDocuments ?? documentsData?.count ?? 0)
         }));
       }
 
       // 데이터셋 수 가져오기
       const datasetsResponse = await fetch('/api/datasets');
       if (datasetsResponse.ok) {
-        const datasetsData = await datasetsResponse.json();
+        const datasetsRaw = await datasetsResponse.json();
+        const datasetList: any[] = Array.isArray(datasetsRaw)
+          ? datasetsRaw
+          : Array.isArray(datasetsRaw?.data)
+          ? datasetsRaw.data
+          : Array.isArray(datasetsRaw?.items)
+          ? datasetsRaw.items
+          : Array.isArray(datasetsRaw?.datasets)
+          ? datasetsRaw.datasets
+          : []; // 예상치 못한 구조일 때 비어 있는 배열로 처리
         setSystemMetrics(prev => ({
           ...prev,
-          activeDatasets: datasetsData.filter((d: any) => d.status === 'active').length || 0
+          activeDatasets: datasetList.filter((d: any) => (d.status || d.state || '').toLowerCase() === 'active').length || datasetList.length || 0
         }));
       }
 
       // Docker 컨테이너 상태 확인
       const healthResponse = await fetch('/api/health/containers');
       if (healthResponse.ok) {
-        const healthData = await healthResponse.json();
-        const allHealthy = Object.values(healthData).every(status => status === 'healthy');
-        const hasError = Object.values(healthData).some(status => status === 'error');
+        const healthRaw = await healthResponse.json();
+        const healthData = (healthRaw?.data ?? healthRaw) as Record<string, string>;
+        const statuses = Object.values(healthData ?? {});
+        const allHealthy = statuses.length > 0 && statuses.every(status => status === 'healthy' || status === 'running');
+        const hasError = statuses.some(status => status === 'error' || status === 'stopped');
 
         setSystemMetrics(prev => ({
           ...prev,

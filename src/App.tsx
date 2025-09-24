@@ -30,6 +30,7 @@ interface SourceReference {
   similarity?: number;
   documentId?: string;
   highlightSnippet?: string;
+  originalIndex?: number;
 }
 
 export default function App() {
@@ -102,6 +103,7 @@ export default function App() {
     // Navigate to knowledge base without auto-filling search
     setKnowledgeBaseProps({
       initialDatasetId: source.datasetId,
+      initialDocId: source.documentId || undefined,
       initialChunkId: source.chunkId,
       initialHighlight: '' // Don't auto-fill search with document content
     });
@@ -113,7 +115,7 @@ export default function App() {
     // 벡터 DB 메뉴(Knowledge Base)로 이동하며 데이터셋 정보 표시
     setKnowledgeBaseProps({
       initialDatasetId: datasetId,
-      initialDocId: docId,
+      initialDocId: docId || undefined,
       initialChunkId: chunkId,
       initialHighlight: ''
     });

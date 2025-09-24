@@ -65,6 +65,23 @@ function KnowledgeBase({
   const [highlightSearch, setHighlightSearch] = useState(true);
   const [highlightedChunkId, setHighlightedChunkId] = useState<string | null>(null);
 
+  // Tab state for navigation from chat sources
+  const [activeTab, setActiveTab] = useState(() => {
+    // 초기값이 있으면 벡터DB 탭으로, 없으면 문서 탭으로
+    return (initialDatasetId || initialDocId || initialChunkId) ? 'vectors' : 'documents';
+  });
+
+  useEffect(() => {
+    if (initialDatasetId || initialDocId || initialChunkId) {
+      console.log('🧭 초기 지식베이스 컨텍스트 감지 - Vectors 탭으로 이동', {
+        initialDatasetId,
+        initialDocId,
+        initialChunkId
+      });
+      setActiveTab('vectors');
+    }
+  }, [initialDatasetId, initialDocId, initialChunkId]);
+
   const loadDatasets = async () => {
     setDsLoading(true);
     setDsError(null);
@@ -99,21 +116,47 @@ function KnowledgeBase({
     loadDatasets();
   }, []);
 
+  useEffect(() => {
+    if (!initialDatasetId) return;
+    if (selectedDatasetId === initialDatasetId) return;
+    const hasInitialDataset = datasets.some(ds => ds.id === initialDatasetId);
+    if (hasInitialDataset) {
+      console.log('🧭 데이터셋 목록 로드 이후 초기값 반영:', {
+        initialDatasetId
+      });
+      setSelectedDatasetId(initialDatasetId);
+    }
+  }, [datasets, initialDatasetId, selectedDatasetId]);
+
   // Handle initial values for navigation from chat sources
   useEffect(() => {
     if (initialDatasetId && initialDatasetId !== selectedDatasetId) {
+      console.log('🧭 초기 데이터셋 선택 적용:', {
+        initialDatasetId,
+        previousSelectedDatasetId: selectedDatasetId
+      });
       setSelectedDatasetId(initialDatasetId);
     }
   }, [initialDatasetId]);
 
   useEffect(() => {
-    if (initialDocId && initialDocId !== selectedDocId && selectedDatasetId) {
+    if (!initialDocId || !selectedDatasetId) return;
+    if (selectedDocId === initialDocId) return;
+    const hasInitialDoc = docs.some(doc => doc.id === initialDocId);
+    if (hasInitialDoc) {
+      console.log('🧭 초기 문서 선택 적용:', {
+        initialDocId,
+        selectedDatasetId
+      });
       setSelectedDocId(initialDocId);
     }
-  }, [initialDocId, selectedDatasetId]);
+  }, [initialDocId, selectedDatasetId, selectedDocId, docs]);
 
   useEffect(() => {
     if (initialChunkId) {
+      console.log('🧭 초기 청크 하이라이트 적용:', {
+        initialChunkId
+      });
       setHighlightedChunkId(initialChunkId);
       // Auto-scroll to the chunk (simple implementation)
       setTimeout(() => {
@@ -228,7 +271,18 @@ function KnowledgeBase({
       setChunks(res.chunks || []);
       setSelectedChunkIds([]);
     } catch (err: any) {
-      setChunksError(err?.message || '청크 목록을 불러오지 못했습니다.');
+      const message: string = err?.message || '청크 목록을 불러오지 못했습니다.';
+      if (message.includes("don't own the document")) {
+        console.warn('⚠️ 문서 접근 권한 없음:', {
+          selectedDatasetId,
+          selectedDocId,
+          error: message
+        });
+        setChunks([]);
+        setChunksError('이 문서는 현재 계정에서 접근할 수 없습니다. 관리자에게 권한을 요청하세요.');
+      } else {
+        setChunksError(message);
+      }
     } finally {
       setChunksLoading(false);
     }
@@ -356,7 +410,7 @@ function KnowledgeBase({
       </div>
 
       <div className="flex-1 overflow-auto p-6">
-        <Tabs defaultValue="documents" className="h-full">
+        <Tabs value={activeTab} onValueChange={setActiveTab} className="h-full">
           <TabsList className="grid w-full grid-cols-3 mb-4">
             <TabsTrigger value="documents">문서</TabsTrigger>
             <TabsTrigger value="vectors">벡터DB</TabsTrigger>

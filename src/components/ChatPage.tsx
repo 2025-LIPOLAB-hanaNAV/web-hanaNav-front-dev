@@ -21,6 +21,43 @@ function isSimpleGreeting(query: string): boolean {
   return greetings.some(greeting => normalizedQuery.includes(greeting.toLowerCase()) && normalizedQuery.length <= greeting.length + 5);
 }
 
+// 일상대화인지 판단하는 함수 (지식베이스 없이 처리 가능한 질문들)
+function isCasualConversation(query: string): boolean {
+  const casualKeywords = [
+    // 음식 관련
+    '점심', '저녁', '아침', '메뉴', '맛집', '음식', '식사', '먹을', '배고', '배고픈', '밥', '식당',
+    // 날씨 관련
+    '날씨', '비', '눈', '더워', '추워', '덥', '춥', '햇살', '바람',
+    // 일반 대화
+    '어때', '어떻게', '뭐해', '뭐하', '안녕', '고마워', '감사', '괜찮', '좋아', '싫어',
+    // 시간 관련
+    '몇시', '시간', '언제', '오늘', '내일', '어제', '주말',
+    // 기타 일상
+    '취미', '여행', '쇼핑', '영화', '드라마', '음악', '게임', '운동', '건강'
+  ];
+
+  const normalizedQuery = query.trim().toLowerCase().replace(/[!?.,]/g, '');
+  return casualKeywords.some(keyword => normalizedQuery.includes(keyword));
+}
+
+// 금융/은행 관련 질문인지 판단하는 함수
+function isBankingQuery(query: string): boolean {
+  const bankingKeywords = [
+    // 은행 업무
+    '계좌', '통장', '카드', '대출', '적금', '예금', '투자', '보험', '연금',
+    '이체', '송금', '입금', '출금', '잔액', '한도', '수수료', '금리', '이자',
+    // 은행 서비스
+    '인터넷뱅킹', '모바일뱅킹', 'atm', '지점', '영업시간', '상담', '고객센터',
+    // 금융 상품
+    '적금', '예금', '펀드', '주식', '채권', '보험', '연금', '신탁',
+    // 문제 상황
+    '분실', '도난', '사고', '오류', '문의', '신고', '해지', '정지', '제한'
+  ];
+
+  const normalizedQuery = query.trim().toLowerCase();
+  return bankingKeywords.some(keyword => normalizedQuery.includes(keyword));
+}
+
 interface ChatMessage {
   id: string;
   type: 'user' | 'assistant' | 'system';
@@ -44,6 +81,7 @@ interface SourceReference {
   similarity?: number;
   documentId?: string;
   highlightSnippet?: string;
+  originalIndex?: number;
 }
 
 interface EvidenceItem {
@@ -383,26 +421,39 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
         opener: "🌟 안녕하세요! 빠른별돌이입니다. 무엇을 도와드릴까요?"
       },
       rag: {
-        prompt: `당신은 "빠른별돌이"라는 이름의 지식베이스 전문 AI 어시스턴트입니다 🌙
+        prompt: `당신은 "빠른별돌이"라는 이름의 금융 문서 전문 AI 어시스턴트입니다 🌙
 
-빠른별돌이는 제공된 지식베이스에서 관련성 높은 정보를 찾아 빠르고 신뢰할 수 있는 답변을 드립니다.
-
-🔒 **엄격한 지식베이스 준수 규칙**
-반드시 제공된 지식베이스 내용만을 사용하여 답변하세요. 추측이나 일반상식을 절대 추가하지 마세요.
+아래 제공된 지식베이스는 하나은행의 공식 문서, 정책, 규정에서 추출한 정확한 내용입니다.
 
 📚 **지식베이스:**
 {knowledge}
 
-📋 **답변 작성 규칙:**
-1. **오직 지식베이스에 명시된 내용만** 답변에 포함
-2. **직접 인용**: "지식베이스에 따르면 [정확한 원문 내용]" 형태로 답변
-3. **추론 금지**: 지식베이스에 없는 내용은 절대 추가하거나 추측하지 마세요
-4. **명시적 한계 표시**: 정보가 부족하면 "지식베이스에는 이 부분만 명시되어 있습니다"
-- 출처는 [1], [2] 형태로 표시
-- 친근하고 신뢰할 수 있는 톤 유지
+🔒 **절대 준수 규칙 (위반 시 답변 거부)**
+1. **원문 그대로 인용**: 지식베이스의 문장을 정확히 따옴표로 묶어 인용하세요
+2. **추론 및 해석 금지**: 문서에 명시되지 않은 내용은 절대 추가하지 마세요
+3. **일반상식 사용 금지**: 외부 지식이나 상식으로 보완하지 마세요
 
-🌟 지식베이스만을 믿고 정확한 답변을 드리겠습니다!`,
-        opener: "🌟 별처럼 빠르게 답하는 빠른별돌이입니다! 지금 궁금한 걸 바로 물어보세요."
+📋 **정확한 답변 형식:**
+
+**질문에 대한 직접적 답변:**
+지식베이스에 따르면 "[원문을 정확히 그대로 인용]"라고 명시되어 있습니다.
+
+**구체적 세부사항 (있는 경우만):**
+- **[항목1]:** "[관련 원문 인용]"
+- **[항목2]:** "[관련 원문 인용]"
+
+**한계 명시:**
+지식베이스에는 [구체적인 추가 정보]에 대한 내용은 포함되어 있지 않습니다.
+
+**출처 표시:** 인용한 내용마다 [1], [2] 형태로 출처 번호 표시
+
+⚠️ **금지사항:**
+- "일반적으로", "보통", "대개" 등의 표현 사용 금지
+- 문서에 없는 배경 설명이나 해석 추가 금지
+- 여러 문서의 내용을 임의로 조합하여 새로운 의미 생성 금지
+
+🌟 오직 문서에 명시된 사실만을 정확히 전달드리겠습니다!`,
+        opener: "🌟 하나은행 공식 문서를 기반으로 정확한 답변을 드리는 빠른별돌이입니다!"
       }
     },
     precise: {
@@ -430,30 +481,40 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
         opener: "🔍 안녕하세요! 정밀한별입니다. 정확한 검증이 필요한 질문을 말씀해 주세요."
       },
       rag: {
-        prompt: `당신은 "정밀한별"이라는 이름의 지식베이스 전문 검증 AI 어시스턴트입니다 🔍
+        prompt: `당신은 "정밀한별"이라는 이름의 법률/금융 문서 전문 검증 AI 어시스턴트입니다 🔍
 
-정밀한별은 제공된 지식베이스를 정밀하게 분석하여 관련성 높은 정보를 제공하는 전문가입니다.
-
-🔒 **극도로 엄격한 사실 검증 규칙**
-절대로 지식베이스에 없는 내용을 추가하거나 추측하지 마세요. 오직 명시된 내용만 정확히 인용하세요.
+아래 지식베이스는 하나은행의 공식 규정, 법률 문서, 정책에서 추출한 법적 효력을 가진 정확한 내용입니다.
 
 📚 **지식베이스:**
 {knowledge}
 
-🔬 **정밀 검증 기준:**
-- **원문 그대로 인용**: 지식베이스 내용을 정확히 그대로 인용
-- **추론 완전 금지**: 암시하거나 추측할 수 있는 내용도 절대 포함 금지
-- **명시적 한계**: "지식베이스에는 정확히 이렇게 명시되어 있습니다"
-- **일반상식 사용 금지**: 외부 지식은 절대 사용하지 않음
+🔒 **극도로 엄격한 사실 검증 규칙**
+1. **문자 그대로 인용**: 한 글자도 바꾸지 말고 원문 그대로 인용
+2. **해석 완전 금지**: 문서 내용에 대한 어떠한 해석이나 의미 부여도 금지
+3. **추론 절대 금지**: "~것으로 보임", "~추정됨" 등 추론성 표현 절대 금지
 
-✅ **정밀 답변 방식:**
-1. **문자 그대로 인용**: 지식베이스 원문을 정확히 인용
-2. **추가 설명 금지**: 지식베이스에 없는 배경설명이나 해석 금지
-3. **명확한 출처 표시**: 인용한 부분마다 [1], [2] 출처 명시
-- 출처를 [1], [2] 형태로 명확히 표시
+📋 **정밀 검증 답변 형식:**
 
-🔍 검증된 정보만을 정밀하게 분석하여 제공하겠습니다`,
-        opener: "🔍 정밀한별입니다! 전문적인 검증과 함께 정확한 답변을 드리겠습니다."
+**핵심 답변:**
+질문하신 내용에 대해 지식베이스에는 정확히 다음과 같이 명시되어 있습니다:
+
+"[원문을 한 글자도 바꾸지 않고 그대로 인용]" [출처번호]
+
+**추가 관련 조항 (있는 경우만):**
+- "[관련 원문 1]" [출처번호]
+- "[관련 원문 2]" [출처번호]
+
+**검증 결과:**
+지식베이스에서 확인된 내용은 위가 전부이며, 추가적인 해석이나 설명은 문서에 포함되어 있지 않습니다.
+
+⚠️ **절대 금지사항:**
+- 문서 내용의 의미나 의도 해석
+- "이는 ~를 의미합니다" 같은 설명 추가
+- 법적/금융적 조언이나 개인 의견 제시
+- 여러 조항을 연결해서 새로운 결론 도출
+
+🔍 오직 문서에 명시된 조문과 규정만을 정확히 제시하겠습니다`,
+        opener: "🔍 정밀한별입니다! 법률/금융 문서의 정확한 조문만을 제시해 드리겠습니다."
       }
     },
     summary: {
@@ -776,12 +837,18 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
 
     setMessages(prev => [...prev, loadingMessage]);
 
-    const preprocessMarkdownText = (text: string): string => {
-      console.log('🔧 전처리 시작 원본 텍스트:', text);
+    const preprocessMarkdownText = (text: string, sourceIndexMap?: Map<number, number>): string => {
+      console.log('🔧 전처리 시작 원본 텍스트:', text.substring(0, 200) + '...');
 
       let cleaned = text;
 
-      // 기본 HTML 태그를 마크다운으로 변환
+      const remapIndex = (originalIndex: number): number => {
+        if (!sourceIndexMap) return originalIndex;
+        const mapped = sourceIndexMap.get(originalIndex);
+        return mapped !== undefined ? mapped : originalIndex;
+      };
+
+      // 1. 기본 HTML 태그를 마크다운으로 변환
       cleaned = cleaned
         .replace(/<em>/g, '*')
         .replace(/<\/em>/g, '*')
@@ -792,38 +859,112 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
         .replace(/<i>/g, '*')
         .replace(/<\/i>/g, '*');
 
-      // 출처 링크 변환 (순서 중요: 더 구체적인 패턴을 먼저)
-      console.log('🔧 링크 변환 전:', cleaned);
+      // 2. 특수 케이스 먼저 처리: .** 패턴 수정
+      // .** → **  (점과 볼드 태그 사이 정리)
+      cleaned = cleaned.replace(/\.\*\*/g, '. **');
 
-      // 1. [ID:숫자] 형태 (가장 구체적)
-      cleaned = cleaned.replace(/\[ID:(\d+)\]/g, (match, num) => {
-        console.log(`🔧 [ID:${num}] → [${num}](#source-${num})`);
-        return `[${num}](#source-${num})`;
+      // 문장 끝의 점과 볼드 시작 사이에 공백 추가
+      cleaned = cleaned.replace(/\.([가-힣A-Za-z])/g, '. $1');
+
+      // 3. 깨진 마크다운 태그 수정
+      // **텍스트*로 끝나는 경우 → **텍스트**로 수정
+      cleaned = cleaned.replace(/\*\*([^*]+?)\*(?!\*)/g, '**$1**');
+
+      // *텍스트**로 끝나는 경우 → **텍스트**로 수정
+      cleaned = cleaned.replace(/(?<!\*)\*([^*]+?)\*\*/g, '**$1**');
+
+      // 연속된 볼드 태그 정리: ****텍스트**** → **텍스트**
+      cleaned = cleaned.replace(/\*{3,}([^*]+?)\*{3,}/g, '**$1**');
+
+      // 4. 공백과 문장 사이 정리
+      // 연속된 공백을 하나로
+      cleaned = cleaned.replace(/ {2,}/g, ' ');
+
+      // 볼드 텍스트 뒤에 바로 오는 텍스트 사이에 공백 추가
+      cleaned = cleaned.replace(/(\*\*[^*]+?\*\*)([가-힣A-Za-z])/g, '$1 $2');
+
+      // 콜론 뒤에 공백 추가
+      cleaned = cleaned.replace(/(\*\*[^*]*?:\*\*)([^\s])/g, '$1 $2');
+
+      // 물음표 뒤에 공백 추가
+      cleaned = cleaned.replace(/(\?[^가-힣A-Za-z\s])([가-힣A-Za-z])/g, '$1 $2');
+
+      // 5. 출처 링크 제거 - 모든 출처 패턴을 텍스트에서 완전 제거
+      console.log('🔗 출처 링크 제거 전 텍스트:', cleaned.substring(0, 300));
+
+      // RAGFlow에서 나오는 모든 출처 패턴들을 제거:
+
+      // 1. 숫자(#source-숫자) 형태 제거
+      cleaned = cleaned.replace(/\d+\s*\(\s*#source\s*[-_]?\s*\d+\s*\)/g, '');
+
+      // 2. 숫자 #source-숫자 형태 (괄호 없이) 제거
+      cleaned = cleaned.replace(/\d+\s*#source\s*[-_]?\s*\d+/g, '');
+
+      // 3. 고립된 (#source-숫자) 형태 제거
+      cleaned = cleaned.replace(/\(\s*#source\s*[-_]?\s*\d+\s*\)/g, '');
+
+      // 4. [ID:숫자] 형태 제거
+      cleaned = cleaned.replace(/\[ID:\d+\]/g, '');
+
+      // 5. ID:숫자 형태 제거
+      cleaned = cleaned.replace(/\bID:\d+\b/g, '');
+
+      // 6. [숫자](#source-숫자) 형태 제거 (완전한 링크 패턴)
+      cleaned = cleaned.replace(/\[\d+\]\(#source-\d+\)/g, '');
+
+      // 7. [숫자] 형태 제거
+      cleaned = cleaned.replace(/\[\d+\]/g, '');
+
+      // 8. 복합 패턴 제거: [숫자](#source-숫자)(#source-숫자)
+      cleaned = cleaned.replace(/\[\d+\]\(#source-\d+\)\(#source-\d+\)/g, '');
+
+      // 9. (숫자) 형태 제거 - 단, 년도나 일반적인 괄호 숫자는 보존
+      cleaned = cleaned.replace(/\((\d+)\)/g, (match, num) => {
+        const parsed = parseInt(num, 10);
+        // 년도(1900-2100) 또는 일반적인 번호 체계는 보존
+        if (parsed >= 1900 && parsed <= 2100) return match;
+        if (parsed > 100) return match; // 큰 숫자는 일반 숫자로 판단
+        return ''; // 작은 숫자는 출처 번호로 판단하여 제거
       });
 
-      // 2. ID:숫자 형태 (대괄호 없는 경우)
-      cleaned = cleaned.replace(/\bID:(\d+)\b/g, (match, num) => {
-        console.log(`🔧 ID:${num} → [${num}](#source-${num})`);
-        return `[${num}](#source-${num})`;
-      });
+      // 10. 출처 링크 제거 후 남은 불필요한 공백 정리
+      cleaned = cleaned.replace(/\s{2,}/g, ' '); // 연속 공백을 하나로
+      cleaned = cleaned.replace(/\s+([,.!?])/g, '$1'); // 구두점 앞 공백 제거
 
-      // 3. [숫자] 형태 (일반적인 참조)
-      cleaned = cleaned.replace(/\[(\d+)\]/g, (match, num) => {
-        console.log(`🔧 [${num}] → [${num}](#source-${num})`);
-        return `[${num}](#source-${num})`;
-      });
+      console.log('🔗 출처 링크 제거 후 텍스트:', cleaned.substring(0, 300));
 
-      console.log('🔧 링크 변환 후:', cleaned);
+      // 6. 리스트 포맷팅 개선
+      // 숫자 리스트 패턴 정리
+      cleaned = cleaned.replace(/([^\n])(\d+)\.\s*\*\*/g, '$1\n\n$2. **');
 
-      // 기본적인 리스트 포맷팅 개선
-      cleaned = cleaned.replace(/(\d+)\.\s\*\*/g, '\n$1. **'); // 숫자 리스트 앞에 줄바꿈
-      cleaned = cleaned.replace(/\*\*([^*]+):\*\*/g, '**$1:**'); // 볼드 콜론 수정
+      // 볼드 콜론 패턴 정리
+      cleaned = cleaned.replace(/\*\*([^*]+?):\*\*/g, '**$1:**');
 
-      // 여러 줄바꿈을 두 개로 제한
+      // 7. 가독성 개선을 위한 문단 및 줄바꿈 정리
+
+      // 문장 끝에 적절한 줄바꿈 추가 (가독성 향상)
+      cleaned = cleaned.replace(/([.!?])\s*([가-힣A-Za-z])/g, '$1\n\n$2');
+
+      // 볼드 제목 뒤에 줄바꿈 추가
+      cleaned = cleaned.replace(/(\*\*[^*]+\*\*)\s*([가-힣A-Za-z])/g, '$1\n$2');
+
+      // 리스트 항목 사이에 적당한 간격
+      cleaned = cleaned.replace(/(\d+\.\s[^\n]+)\s*(\d+\.)/g, '$1\n\n$2');
+
+      // 여러 줄바꿈을 두 개로 제한 (단락 구분 유지)
       cleaned = cleaned.replace(/\n{3,}/g, '\n\n');
+
+      // 콜론 뒤에 줄바꿈 추가 (설명 구조 개선)
+      cleaned = cleaned.replace(/(\*\*[^*]*:\*\*)\s*([가-힣A-Za-z])/g, '$1\n$2');
+
+      // 8. 최종 정리
+      // 앞뒤 공백 제거
       cleaned = cleaned.trim();
 
-      console.log('🔧 전처리 완료 결과:', cleaned);
+      // 연속된 공백 최종 정리 (단, 줄바꿈은 유지)
+      cleaned = cleaned.replace(/[^\S\n]{2,}/g, ' ');
+
+      console.log('🔧 전처리 완료:', cleaned.substring(0, 200) + '...');
       return cleaned;
     };
 
@@ -832,8 +973,30 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
       return chunks
         .filter(Boolean)
         .map((chunk, index) => {
-          const chunkId = chunk?.chunk_id || chunk?.id || `fallback_${index}`;
-          const datasetId = chunk?.dataset_id || chunk?.datasetId || chunk?.dataset?.id || '';
+          // ID 추출 개선 - 다양한 필드에서 시도하면서 문자열로 일관화
+          const chunkIdRaw = chunk?.chunk_id || chunk?.id || chunk?.chunk?.id || `fallback_${index}`;
+          const datasetIdRaw = chunk?.dataset_id || chunk?.datasetId || chunk?.dataset?.id || chunk?.kb_id;
+
+          // 문서 ID 추출 개선 - 다양한 필드에서 시도하면서 문자열로 일관화
+          const documentIdRaw = chunk?.document_id || chunk?.documentId || chunk?.document?.id ||
+                           chunk?.doc_id || chunk?.file_id || chunk?.document_uuid;
+
+          const chunkId = chunkIdRaw != null ? String(chunkIdRaw) : `fallback_${index}`;
+          const datasetId = datasetIdRaw != null ? String(datasetIdRaw) : (selectedKBs[0] ?? '');
+          const documentId = documentIdRaw != null ? String(documentIdRaw) : undefined;
+
+          console.log(`🔍 청크 ${index} ID 매핑:`, {
+            chunkId,
+            datasetId,
+            documentId,
+            originalFields: {
+              chunk_id: chunk?.chunk_id,
+              id: chunk?.id,
+              dataset_id: chunk?.dataset_id,
+              document_id: chunk?.document_id,
+              documentId: chunk?.documentId
+            }
+          });
 
           // 데이터셋 이름 추출 시도 - 실제 선택된 지식베이스 이름 우선 사용
           let datasetName = chunk?.dataset_name || chunk?.datasetName || chunk?.dataset?.name ||
@@ -842,14 +1005,15 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
           // 실제 선택된 지식베이스 이름으로 매핑
           if (!datasetName || datasetName.startsWith('데이터셋')) {
             const matchedKB = knowledgeBases.find(kb =>
-              kb.id === chunk?.dataset_id || kb.id === chunk?.datasetId || kb.id === datasetId
+              kb.id === datasetId || kb.id === chunk?.dataset_id || kb.id === chunk?.datasetId
             );
             datasetName = matchedKB?.name || `데이터셋 ${index + 1}`;
           }
 
           // 문서 제목 추출 및 길이 제한 - document_keyword 필드 우선 사용
           let rawTitle = chunk?.document_keyword || chunk?.document_name || chunk?.doc_name ||
-                        chunk?.document_title || chunk?.file_name || chunk?.title || chunk?.name;
+                        chunk?.document_title || chunk?.file_name || chunk?.title || chunk?.name ||
+                        chunk?.document?.name || chunk?.document?.title;
 
           // 확장자 제거 및 정리
           if (rawTitle && rawTitle !== `문서 ${index + 1}`) {
@@ -868,13 +1032,14 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
             ''
           ).toString();
 
-          console.log(`🔍 매핑된 소스 ${index + 1}:`, {
+          console.log(`✅ 매핑 완료 - 소스 ${index}:`, {
+            id: `source_${index}`,
             title,
             datasetName,
             datasetId,
-            similarity: chunk?.similarity ?? chunk?.score,
-            availableKBs: knowledgeBases.map(kb => ({ id: kb.id, name: kb.name })),
-            originalChunk: chunk
+            documentId,
+            chunkId,
+            similarity: chunk?.similarity ?? chunk?.score
           });
 
           return {
@@ -885,10 +1050,38 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
             datasetName,
             chunkId,
             similarity: chunk?.similarity ?? chunk?.score,
-            documentId: chunk?.document_id || chunk?.documentId || chunk?.document?.id,
+            documentId,
             highlightSnippet: chunk?.highlight || chunk?.highlight_text,
+            originalIndex: index,
           } satisfies SourceReference;
         });
+    };
+
+    const normalizeSourcesBySimilarity = (refs: SourceReference[]) => {
+      if (!Array.isArray(refs) || refs.length === 0) {
+        return {
+          normalized: [] as SourceReference[],
+          indexMap: new Map<number, number>()
+        };
+      }
+
+      const scoreOf = (ref: SourceReference): number => {
+        if (typeof ref.similarity === 'number') return ref.similarity;
+        return -Infinity;
+      };
+
+      const sorted = [...refs].sort((a, b) => scoreOf(b) - scoreOf(a));
+      const indexMap = new Map<number, number>();
+      const normalized = sorted.map((source, newIndex) => {
+        const originalIndex = source.originalIndex ?? newIndex;
+        indexMap.set(originalIndex, newIndex);
+        return {
+          ...source,
+          id: `source_${newIndex}`,
+        } satisfies SourceReference;
+      });
+
+      return { normalized, indexMap };
     };
 
     try {
@@ -922,6 +1115,19 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
         );
       };
 
+      // 일상대화 감지 및 처리
+      const isCasual = isCasualConversation(query);
+      const isBanking = isBankingQuery(query);
+      const shouldUseKnowledgeBase = selectedKBs.length > 0 && (isBanking || !isCasual);
+
+      console.log(`🤖 Query analysis:`, {
+        query: query.substring(0, 50) + '...',
+        isCasual,
+        isBanking,
+        hasSelectedKBs: selectedKBs.length > 0,
+        shouldUseKnowledgeBase
+      });
+
       // RAGFlow 네이티브 스트리밍 API 사용 (reference 정보 포함)
       const result = await converseOnce(
         activeAssistantId,
@@ -930,19 +1136,20 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
           session_id: ensuredSessionId,
           stream: true, // 스트리밍 활성화
           // 검색 품질 개선 파라미터 적용
-          ...(selectedKBs.length > 0 ? {
-            // 지식베이스가 있을 때: 환각 방지 중심 파라미터
-            similarity_threshold: 0.15,
-            vector_similarity_weight: 0.7,
-            top_k: 50,
+          ...(shouldUseKnowledgeBase ? {
+            // 지식베이스가 있고 은행 관련 질문일 때: 정확성 중심 파라미터
+            similarity_threshold: 0.25, // 더 엄격한 임계값으로 고품질 문서만 선택
+            vector_similarity_weight: 0.8, // 벡터 유사도 비중 증가
+            top_k: 20, // 상위 20개만 선택하여 품질 향상
             keyword: true,
-            temperature: 0.1,
-            max_tokens: 800,
+            temperature: 0.05, // 매우 낮은 온도로 일관성 있는 답변
+            max_tokens: 600, // 간결하고 정확한 답변
             ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정
           } : {
-            // 지식베이스가 없을 때: 일상대화 모드
-            temperature: 0.3,
-            top_k: 0
+            // 일상대화 모드: 지식베이스 사용하지 않고 자연스럽게 대화
+            temperature: isCasual ? 0.7 : 0.3,
+            top_k: 0,
+            max_tokens: 500
           })
         },
         {
@@ -982,10 +1189,62 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
 
       let sources: SourceReference[] = mapChunksToSources(effectiveReference?.chunks);
 
-      // RAGFlow 네이티브 API에서 reference가 없는 경우에만 fallback 검색
-      if (sources.length === 0 && selectedKBs.length > 0 && !effectiveReference?.chunks) {
+      // 멀티턴 대화에서 출처 정보 강화: 지식베이스가 선택되어 있고 은행 관련 질문이면 항상 출처 검색
+      const needsSourceEnforcement = selectedKBs.length > 0 && shouldUseKnowledgeBase && sources.length === 0;
+
+      if (needsSourceEnforcement) {
         try {
-          console.log('🔍 Reference 정보 없음 - fallback 검색 실행...');
+          console.log('🔍 멀티턴 대화에서 출처 정보 없음 - 강제 검색 실행...');
+          const fallback = await retrieveChunks({
+            question: query,
+            dataset_ids: selectedKBs,
+            page: 1,
+            page_size: 6, // 더 엄선된 결과만
+            top_k: 15, // 상위 15개만 검토
+            highlight: true,
+            keyword: true,
+            similarity_threshold: 0.3, // 멀티턴에서도 높은 품질 유지
+            vector_similarity_weight: 0.8, // 벡터 유사도 중심
+            ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정,
+          });
+          if (fallback?.chunks?.length) {
+            console.log('✅ 멀티턴 출처 정보 강제 로드 완료:', fallback.chunks.length, '개');
+            effectiveReference = {
+              ...(effectiveReference || {}),
+              chunks: fallback.chunks,
+              total: fallback.total,
+              fallback_source: 'multiturn_enforcement',
+            };
+            latestReference = effectiveReference;
+            sources = mapChunksToSources(fallback.chunks);
+
+            // 멀티턴에서 강제 검색된 출처를 답변에 추가 (1-based 표시)
+            if (sources.length > 0) {
+              const sourceLinks = sources.map((source, index) => {
+                console.log(`📎 출처 링크 생성 ${index}:`, {
+                  sourceId: source.id,
+                  datasetId: source.datasetId,
+                  documentId: source.documentId,
+                  title: source.title
+                });
+                // 1-based 표시 ([1], [2], [3]...)하지만 href는 0-based 인덱스 유지
+                return `[${index + 1}](#source-${index})`;
+              }).join(' ');
+              if (effectiveAnswer && !effectiveAnswer.includes('[')) {
+                effectiveAnswer = effectiveAnswer + ` ${sourceLinks}`;
+                console.log('📎 멀티턴 답변에 출처 링크 추가:', sourceLinks);
+              }
+            }
+          }
+        } catch (fallbackError) {
+          console.warn('⚠️ 멀티턴 출처 정보 강제 로드 실패:', fallbackError);
+        }
+      }
+
+      // 기존 fallback 로직도 유지 (RAGFlow 자체에서 reference가 없는 경우)
+      else if (sources.length === 0 && selectedKBs.length > 0 && !effectiveReference?.chunks && shouldUseKnowledgeBase) {
+        try {
+          console.log('🔍 Reference 정보 없음 - 일반 fallback 검색 실행...');
           const fallback = await retrieveChunks({
             question: query,
             dataset_ids: selectedKBs,
@@ -994,12 +1253,12 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
             top_k: 30,
             highlight: true,
             keyword: true,
-            similarity_threshold: 0.1, // 검색 품질 개선 파라미터 적용
+            similarity_threshold: 0.1,
             vector_similarity_weight: 0.5,
-            ...getRerankConfig() // 환경변수로 제어되는 리랭커 설정,
+            ...getRerankConfig()
           });
           if (fallback?.chunks?.length) {
-            console.log('✅ Fallback 출처 정보 로드 완료:', fallback.chunks);
+            console.log('✅ 일반 Fallback 출처 정보 로드 완료:', fallback.chunks);
             effectiveReference = {
               ...(effectiveReference || {}),
               chunks: fallback.chunks,
@@ -1022,7 +1281,65 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
         sources
       });
 
-      const finalContent = preprocessMarkdownText(effectiveAnswer || '응답이 비어 있습니다.');
+      let sourceIndexMap: Map<number, number> | undefined;
+      if (sources.length > 0) {
+        const { normalized, indexMap } = normalizeSourcesBySimilarity(sources);
+        sources = normalized;
+        sourceIndexMap = indexMap;
+
+        if (effectiveReference?.chunks?.length) {
+          const scoreOf = (chunk: any): number => {
+            if (typeof chunk?.similarity === 'number') return chunk.similarity;
+            if (typeof chunk?.score === 'number') return chunk.score;
+            return -Infinity;
+          };
+          const sortedChunks = [...effectiveReference.chunks].sort((a, b) => scoreOf(b) - scoreOf(a));
+          effectiveReference = {
+            ...(effectiveReference || {}),
+            chunks: sortedChunks,
+          };
+          latestReference = effectiveReference;
+        }
+      }
+
+      let answerToRender = (effectiveAnswer || '').trim();
+      let usedTopSourceFallback = false;
+
+      if (!answerToRender) {
+        if (sources.length > 0) {
+          const topSource = sources[0];
+          const snippetSource = topSource.highlightSnippet || topSource.content;
+          const plainSnippet = typeof snippetSource === 'string'
+            ? snippetSource.replace(/<[^>]*>/g, '').trim()
+            : snippetSource?.toString().replace(/<[^>]*>/g, '').trim();
+          if (plainSnippet) {
+            const trimmedSnippet = plainSnippet.length > 300 ? `${plainSnippet.slice(0, 297)}...` : plainSnippet;
+            answerToRender = `출처 요약:\n\n${trimmedSnippet}\n\n[1]`;
+            usedTopSourceFallback = true;
+            console.log('📌 최고 유사도 출처 보강: 답변이 없어 출처 스니펫으로 대체');
+          }
+        }
+
+        if (!answerToRender) {
+          answerToRender = '응답이 비어 있습니다.';
+        }
+      }
+
+      const finalContent = preprocessMarkdownText(answerToRender, sourceIndexMap);
+
+      let adjustedContent = finalContent;
+      if (!usedTopSourceFallback && sources.length > 0 && !adjustedContent.includes('#source-0')) {
+        const topSource = sources[0];
+        const snippetSource = topSource.highlightSnippet || topSource.content;
+        const plainSnippet = typeof snippetSource === 'string'
+          ? snippetSource.replace(/<[^>]*>/g, '').trim()
+          : snippetSource?.toString().replace(/<[^>]*>/g, '').trim();
+        if (plainSnippet) {
+          const trimmedSnippet = plainSnippet.length > 200 ? `${plainSnippet.slice(0, 197)}...` : plainSnippet;
+          adjustedContent = `${adjustedContent}\n\n> ${trimmedSnippet} [1](#source-0)`;
+          console.log('📌 최고 유사도 출처 보강: 자동 요약 추가');
+        }
+      }
 
       // 메시지 최종 업데이트 (스트리밍 완료 + 출처 정보 포함)
       setMessages(prev =>
@@ -1030,7 +1347,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
           msg.id === loadingMessageId
             ? {
                 ...msg,
-                content: finalContent,
+                content: adjustedContent,
                 timestamp: new Date().toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' }),
                 state: 'success',
                 evidenceCount: Number(evidenceCount) || undefined,
@@ -1287,9 +1604,9 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
       {/* Quality Dashboard removed by request */}
 
       {/* Fixed Chat Controls (filters removed; KB chooser added) */}
-      <div className="flex-shrink-0 border-b bg-elevated">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between p-3 gap-3">
-          <div className="flex items-center gap-2 min-w-0 overflow-x-auto">
+      <div className="flex-shrink-0 border-b bg-elevated/95 backdrop-blur-lg">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between p-3 gap-3">
+          <div className="flex items-center gap-2 min-w-0 overflow-x-auto scrollbar-none">
             {/* Mode Toggle */}
             <div className="flex items-center gap-2 flex-shrink-0">
               <Icon name="settings" size={14} className="text-muted-foreground" />
@@ -1427,7 +1744,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
       {/* Fixed Selected KB chips */}
       {selectedKBs.length > 0 && (
         <div className="flex-shrink-0 px-4 py-2 border-b bg-muted/20">
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-2 flex-wrap min-w-0">
             <span className="text-xs text-muted-foreground">선택된 지식베이스:</span>
             {selectedKBs.map(id => {
               const kb = knowledgeBases.find(k => k.id === id);
@@ -1443,7 +1760,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
       )}
 
       {/* Chat Messages - Scrollable Area */}
-      <div className="flex-1 min-h-0 overflow-auto p-4 space-y-6">
+      <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden px-4 py-6 space-y-6 scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent scroll-smooth">
         {messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center space-y-4">
             <HanaNaviLogo size={96} className="mb-2 opacity-50" />
@@ -1482,7 +1799,7 @@ export function ChatPage({ onEvidenceClick, onSourceClick, onNavigateToKnowledge
       </div>
 
       {/* Fixed Search Input */}
-      <div className="flex-shrink-0 p-4 border-t bg-elevated">
+      <div className="flex-shrink-0 p-4 border-t bg-elevated/95 backdrop-blur-lg">
         <SearchBar
           onSearch={handleSearch}
           onVoiceToggle={setIsVoiceActive}

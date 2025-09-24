@@ -26,6 +26,9 @@ interface SourceReference {
   datasetName: string;
   chunkId?: string;
   similarity?: number;
+  documentId?: string;
+  highlightSnippet?: string;
+  originalIndex?: number;
 }
 
 export default function App() {

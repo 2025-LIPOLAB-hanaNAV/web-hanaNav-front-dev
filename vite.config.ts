@@ -15,6 +15,8 @@ export default defineConfig(({ mode }) => {
       : 'http://host.docker.internal:11435'  // WSL/Linux → 내부 Docker 접근
     );
 
+  const ragflowTarget = env.VITE_PROXY_BASE_URL || env.VITE_RAGFLOW_BASE_URL || 'http://localhost:8000';
+
   const allowed = (env.DEV_ALLOWED_HOSTS || 'localhost')
     .split(',')
     .map((s) => s.trim())
@@ -100,32 +102,67 @@ export default defineConfig(({ mode }) => {
       },
       strictPort: true, // (선택) 포트 점유 시 바로 실패
       proxy: {
-        // Ollama API 전체 프록시 - 모든 /api/ 경로를 Ollama로 프록시
-        '/api/': {
+        // Ollama 전용 엔드포인트
+        '/api/generate': {
           target: ollamaTarget,
           changeOrigin: true,
           secure: false,
-          rewrite: (path) => path,
-          configure: (proxy, options) => {
-            console.log(`🎯 Ollama proxy target: ${ollamaTarget}`);
-            proxy.on('proxyReq', (proxyReq, req, res) => {
+          configure: (proxy) => {
+            console.log(`🎯 Ollama proxy (generate) target: ${ollamaTarget}`);
+            proxy.on('proxyReq', (proxyReq, req) => {
               console.log(`🔄 Proxying ${req.method} ${req.url} to ${ollamaTarget}`);
-              console.log(`📤 Headers:`, req.headers);
-
-              // Content-Type 헤더 강제 설정
               if (req.method === 'POST') {
                 proxyReq.setHeader('Content-Type', 'application/json');
                 proxyReq.setHeader('Accept', 'application/json');
               }
             });
-            proxy.on('proxyRes', (proxyRes, req, res) => {
+            proxy.on('proxyRes', (proxyRes, req) => {
               console.log(`✅ Ollama response ${proxyRes.statusCode} for ${req.url}`);
-              if (proxyRes.statusCode !== 200) {
+              if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
                 console.log(`📥 Response headers:`, proxyRes.headers);
               }
             });
-            proxy.on('error', (err, req, res) => {
-              console.error(`❌ Proxy error for ${req.url}:`, err.message);
+            proxy.on('error', (err, req) => {
+              console.error(`❌ Ollama proxy error for ${req.url}:`, err.message);
+            });
+          }
+        },
+        '/api/tags': {
+          target: ollamaTarget,
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            console.log(`🎯 Ollama proxy (tags) target: ${ollamaTarget}`);
+            proxy.on('proxyReq', (proxyReq, req) => {
+              console.log(`🔄 Proxying ${req.method} ${req.url} to ${ollamaTarget}`);
+            });
+            proxy.on('proxyRes', (proxyRes, req) => {
+              console.log(`✅ Ollama response ${proxyRes.statusCode} for ${req.url}`);
+              if (proxyRes.statusCode && proxyRes.statusCode >= 400) {
+                console.log(`📥 Response headers:`, proxyRes.headers);
+              }
+            });
+            proxy.on('error', (err, req) => {
+              console.error(`❌ Ollama proxy error for ${req.url}:`, err.message);
+            });
+          }
+        },
+
+        // 나머지 /api/* 요청은 RAGFlow/백엔드로 전달
+        '^/api/(?!generate$)(?!tags$).*': {
+          target: ragflowTarget,
+          changeOrigin: true,
+          secure: false,
+          configure: (proxy) => {
+            console.log(`🎯 Backend proxy target: ${ragflowTarget}`);
+            proxy.on('proxyReq', (proxyReq, req) => {
+              console.log(`🔄 Proxying ${req.method} ${req.url} to ${ragflowTarget}`);
+            });
+            proxy.on('proxyRes', (proxyRes, req) => {
+              console.log(`✅ Backend response ${proxyRes.statusCode} for ${req.url}`);
+            });
+            proxy.on('error', (err, req) => {
+              console.error(`❌ Backend proxy error for ${req.url}:`, err.message);
             });
           }
         }

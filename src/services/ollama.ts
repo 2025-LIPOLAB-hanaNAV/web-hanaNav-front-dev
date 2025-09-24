@@ -167,6 +167,59 @@ function getOllamaBaseUrl(): string {
   return 'http://host.docker.internal:11435';
 }
 
+function base64Encode(value: string): string {
+  if (typeof window !== 'undefined' && typeof window.btoa === 'function') {
+    try {
+      return window.btoa(value);
+    } catch {
+      return window.btoa(unescape(encodeURIComponent(value)));
+    }
+  }
+
+  const globalBuffer = typeof globalThis !== 'undefined' ? (globalThis as any).Buffer : undefined;
+  if (globalBuffer) {
+    return globalBuffer.from(value, 'utf-8').toString('base64');
+  }
+
+  throw new Error('Base64 encoding is not supported in this environment');
+}
+
+function getOllamaAuthHeaders(): Record<string, string> {
+  const headers: Record<string, string> = {};
+
+  const customHeader = getEnvVar('VITE_OLLAMA_AUTH_HEADER');
+  if (customHeader) {
+    const [headerKey, ...rest] = customHeader.split(':');
+    if (headerKey && rest.length > 0) {
+      headers[headerKey.trim()] = rest.join(':').trim();
+      return headers;
+    }
+  }
+
+  const token = getEnvVar('VITE_OLLAMA_AUTH_TOKEN');
+  if (token) {
+    const trimmed = token.trim();
+    headers['Authorization'] = trimmed.startsWith('Bearer ') || trimmed.startsWith('Basic ')
+      ? trimmed
+      : `Bearer ${trimmed}`;
+    return headers;
+  }
+
+  const username = getEnvVar('VITE_OLLAMA_AUTH_USERNAME');
+  const password = getEnvVar('VITE_OLLAMA_AUTH_PASSWORD');
+
+  if (username !== undefined && password !== undefined) {
+    try {
+      headers['Authorization'] = `Basic ${base64Encode(`${username}:${password}`)}`;
+      return headers;
+    } catch (error) {
+      console.warn('⚠️ Failed to encode Ollama basic auth credentials:', error);
+    }
+  }
+
+  return headers;
+}
+
 export interface EvaluationRequest {
   question_id: string;
   question: string;
@@ -433,6 +486,7 @@ export async function evaluateWithOllama(
 
       console.log(`🔍 Ollama 평가 시작 (시도 ${attempt + 1}/${maxRetries + 1}): ${data.question_id} - ${metric}`);
       console.log(`📡 Ollama URL: ${OLLAMA_BASE_URL}`);
+      const authHeaders = getOllamaAuthHeaders();
 
       // AbortController로 타임아웃 제어
       const abortController = new AbortController();
@@ -442,6 +496,7 @@ export async function evaluateWithOllama(
         // 연결 테스트
         const healthResponse = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
           method: 'GET',
+          headers: authHeaders,
           signal: abortController.signal
         });
 
@@ -451,7 +506,7 @@ export async function evaluateWithOllama(
 
         const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { ...authHeaders, 'Content-Type': 'application/json' },
           body: JSON.stringify({
             model,
             prompt,
@@ -470,6 +525,9 @@ export async function evaluateWithOllama(
 
         if (!response.ok) {
           const errorText = await response.text();
+          if (response.status === 401 || response.status === 403) {
+            throw new Error(`Ollama API 인증 오류 (${response.status}). 토큰/계정 정보를 확인하고 VITE_OLLAMA_AUTH_* 환경 변수로 인증 헤더를 설정하세요. ${errorText || ''}`.trim());
+          }
           throw new Error(`Ollama API 오류 (${response.status}): ${errorText}`);
         }
 
@@ -611,75 +669,48 @@ export async function generateRAGAnswer(
   model: string = 'gemma3:12b'
 ): Promise<{ answer: string; retrieved_doc_ids: string[] }> {
   try {
-    const OLLAMA_BASE_URL = getOllamaBaseUrl();
-    console.log(`🔗 RAG 요청 URL: ${OLLAMA_BASE_URL}`);
-    console.log(`🤖 RAG 모델: ${model}`);
+    // 품질평가용 특정 App ID 사용
+    const TARGET_APP_ID = 'defd933a97c111f09d8d0e2aa47f01cf';
 
-    // 지식베이스에서 관련 문서 검색
-    const retrievedDocs = await searchKnowledgeBase(question);
-    console.log(`📚 검색된 관련 문서: ${retrievedDocs.length}개`);
+    console.log(`🎯 품질평가 RAG 요청 - App ID: ${TARGET_APP_ID}`);
+    console.log(`🤖 질문: ${question.substring(0, 100)}...`);
 
-    // 향상된 RAG 프롬프트 생성
-    const ragPrompt = createEnhancedRAGPrompt(question, retrievedDocs);
+    // RAGFlow converseOnce를 사용하여 특정 App에 요청
+    const { converseOnce } = await import('./ragflow');
 
-    console.log(`🤖 RAG 답변 생성 시작: ${question.substring(0, 50)}...`);
-    console.log(`📝 RAG 프롬프트 길이: ${ragPrompt.length}자`);
+    const ragResult = await converseOnce(TARGET_APP_ID, {
+      question: question,
+      stream: false, // 평가용이므로 스트리밍 비활성화
+      temperature: 0.3, // 일관된 결과를 위해 낮은 temperature
+      top_k: 10,
+      similarity_threshold: 0.3
+    });
 
-    // AbortController로 타임아웃 제어
-    const abortController = new AbortController();
-    const timeoutId = setTimeout(() => abortController.abort(), 30000); // 30초
-
-    try {
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          prompt: ragPrompt,
-          stream: false,
-          options: {
-            temperature: 0.7,
-            top_p: 0.9,
-            num_predict: 1000
-          }
-        }),
-        signal: abortController.signal
-      });
-
-      clearTimeout(timeoutId);
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`RAG API 오류 (${response.status}): ${errorText}`);
-      }
-
-      const result = await response.json();
-
-      if (!result.response || result.response.trim().length === 0) {
-        throw new Error('RAG 모델에서 빈 응답을 받았습니다');
-      }
-
-      console.log(`✅ RAG 답변 생성 완료: ${result.response.substring(0, 100)}...`);
-
-      return {
-        answer: result.response.trim(),
-        retrieved_doc_ids: retrievedDocs.length > 0 ? retrievedDocs.map(doc => doc.doc_id) : ['generated_by_rag']
-      };
-
-    } catch (error) {
-      clearTimeout(timeoutId);
-      throw error;
+    if (!ragResult.answer) {
+      throw new Error('RAGFlow에서 답변을 생성하지 못했습니다.');
     }
 
+    // 검색된 문서 ID 추출
+    const retrievedDocIds = ragResult.reference?.chunks?.map((chunk: any) =>
+      chunk.document_id || chunk.doc_id || chunk.id || 'unknown'
+    ) || [];
+
+    console.log(`✅ RAG 답변 생성 완료: ${ragResult.answer.substring(0, 200)}...`);
+    console.log(`📚 검색된 문서 수: ${retrievedDocIds.length}개`);
+
+    return {
+      answer: ragResult.answer,
+      retrieved_doc_ids: retrievedDocIds
+    };
   } catch (error) {
-    console.error('❌ RAG 답변 생성 실패:', error);
+    console.error('❌ 품질평가 RAG 답변 생성 실패:', error);
     console.error('❌ 오류 타입:', error instanceof Error ? error.name : typeof error);
     console.error('❌ 오류 메시지:', error instanceof Error ? error.message : String(error));
 
     // 폴백 답변 제공
     const fallbackAnswer = `죄송합니다. 현재 시스템 문제로 정확한 답변을 제공할 수 없습니다. 자세한 내용은 고객센터(1588-1111)로 문의해주세요.`;
 
-    console.log(`🔄 폴백 답변 제공: ${fallbackAnswer}`);
+    console.log(`🔄 품질평가 폴백 답변 제공: ${fallbackAnswer}`);
 
     return {
       answer: fallbackAnswer,
@@ -1091,13 +1122,14 @@ export async function generateComprehensiveRAGAnswer(
 
     // 4. Ollama API 호출로 답변 생성
     const OLLAMA_BASE_URL = getOllamaBaseUrl();
+    const authHeaders = getOllamaAuthHeaders();
     const abortController = new AbortController();
     const timeoutId = setTimeout(() => abortController.abort(), 30000);
 
     try {
       const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { ...authHeaders, 'Content-Type': 'application/json' },
         body: JSON.stringify({
           model,
           prompt: comprehensivePrompt,
@@ -1115,7 +1147,11 @@ export async function generateComprehensiveRAGAnswer(
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`RAG API 오류 (${response.status}): ${await response.text()}`);
+        const errorText = await response.text();
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(`RAG API 인증 오류 (${response.status}). Ollama 접근 권한을 확인하고 VITE_OLLAMA_AUTH_* 환경 변수를 설정하세요. ${errorText || ''}`.trim());
+        }
+        throw new Error(`RAG API 오류 (${response.status}): ${errorText}`);
       }
 
       const result = await response.json();
@@ -1318,6 +1354,7 @@ async function fetchOllamaEvaluation(prompt: string, model: string): Promise<str
 
       console.log(`🔍 Ollama 평가 API 호출 (시도 ${attempt + 1}/${maxRetries + 1}): ${model}`);
       console.log(`📡 Ollama URL: ${OLLAMA_BASE_URL}`);
+      const authHeaders = getOllamaAuthHeaders();
 
       // AbortController로 타임아웃 제어
       const controller = new AbortController();
@@ -1326,6 +1363,7 @@ async function fetchOllamaEvaluation(prompt: string, model: string): Promise<str
       const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
         method: 'POST',
         headers: {
+          ...authHeaders,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
@@ -1344,6 +1382,9 @@ async function fetchOllamaEvaluation(prompt: string, model: string): Promise<str
       clearTimeout(timeoutId);
 
       if (!response.ok) {
+        if (response.status === 401 || response.status === 403) {
+          throw new Error(`Ollama API 인증 오류 (${response.status}). VITE_OLLAMA_AUTH_* 환경 변수를 설정하여 인증 헤더를 전달하세요.`);
+        }
         throw new Error(`Ollama API 오류: ${response.status} ${response.statusText}`);
       }
 
@@ -1783,8 +1824,13 @@ export async function getAvailableModels(): Promise<Array<{id: string, name: str
     const OLLAMA_BASE_URL = getOllamaBaseUrl();
     console.log(`🔍 Fetching models from: ${OLLAMA_BASE_URL}`);
 
-    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+    const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`, {
+      headers: getOllamaAuthHeaders()
+    });
     if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        throw new Error(`모델 목록을 가져올 수 없습니다 (인증 오류 ${response.status}). VITE_OLLAMA_AUTH_* 환경 변수를 확인하세요.`);
+      }
       throw new Error(`Failed to fetch models: ${response.status}`);
     }
 

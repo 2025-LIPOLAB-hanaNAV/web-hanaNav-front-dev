@@ -1,4 +1,7 @@
 import { evaluateWithOllama } from './ollama';
+import {
+  STORAGE_KEYS
+} from '../types/evaluation';
 import type {
   EvaluationResult,
   EvaluationRequest,
@@ -6,7 +9,6 @@ import type {
   EvaluationSummary,
   EvaluationConfig,
   EvaluationOptions,
-  STORAGE_KEYS,
   EvaluationStatus,
   GoldDataset,
   GoldDatasetItem,

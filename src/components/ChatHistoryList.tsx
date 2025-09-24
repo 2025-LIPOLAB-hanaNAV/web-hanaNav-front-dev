@@ -331,9 +331,9 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey, onCreateNewSe
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden font-sans">
+    <div className="flex flex-col h-screen font-sans">
       {/* Header */}
-      <div className="flex-shrink-0 border-b p-4">
+      <div className="flex-shrink-0 border-b bg-elevated p-4">
         <div className="flex flex-col gap-4 mb-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -419,9 +419,9 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey, onCreateNewSe
 
       </div>
 
-      {/* List */}
-      <div className="flex-1 overflow-hidden">
-        <Card className="bg-elevated p-0 h-full overflow-hidden">
+      {/* Chat History List - Scrollable Area */}
+      <div className="flex-1 min-h-0 overflow-hidden">
+        <Card className="bg-background p-0 h-full overflow-hidden border-0">
           {loading ? (
             <div className="flex h-full items-center justify-center px-4 py-6 text-muted-foreground">
               불러오는 중...
@@ -442,7 +442,7 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey, onCreateNewSe
                   <span>전체 선택</span>
                 </div>
               )}
-              <div className="flex-1 overflow-y-auto">
+              <div className="flex-1 overflow-y-auto scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
                 <div className="divide-y divide-border/50">
                   {visible.map((s) => {
                 const key = sessionKey(s);
@@ -455,7 +455,7 @@ export function ChatHistoryList({ onOpenSession, activeSessionKey, onCreateNewSe
                       isActive && 'bg-primary/5'
                     )}
                   >
-                    <div className="gap-x-2 py-2 px-3 flex items-start">
+                    <div className="gap-x-3 py-3 px-4 flex items-start">
                       <Checkbox
                         checked={!!selected[key]}
                         onCheckedChange={(value) => toggleSelection(s, Boolean(value))}

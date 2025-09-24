@@ -20,6 +20,7 @@ interface SourceReference {
   similarity?: number;
   documentId?: string;
   highlightSnippet?: string;
+  originalIndex?: number;
 }
 
 interface ChatBubbleProps {
@@ -61,6 +62,18 @@ export function ChatBubble({
   const copyResetTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const canCopy = Boolean(content && content.trim().length > 0);
+
+  const sortedSources = React.useMemo(() => {
+    if (!sources) return [] as SourceReference[];
+    return [...sources].sort((a, b) => {
+      const aScore = typeof a.similarity === 'number' ? a.similarity : -Infinity;
+      const bScore = typeof b.similarity === 'number' ? b.similarity : -Infinity;
+      if (Number.isFinite(bScore) && Number.isFinite(aScore)) return bScore - aScore;
+      if (Number.isFinite(bScore)) return 1;
+      if (Number.isFinite(aScore)) return -1;
+      return 0;
+    });
+  }, [sources]);
 
   const fallbackCopyToClipboard = (text: string): boolean => {
     try {
@@ -266,25 +279,49 @@ export function ChatBubble({
 
                   // 출처 번호 링크 처리 #source-숫자 형태
                   if (href && href.startsWith('#source-')) {
-                    const sourceNumber = parseInt(href.replace('#source-', ''));
-                    const sourceIndex = sourceNumber - 1; // 1-based를 0-based로 변환
+                    const rawIndex = href.replace('#source-', '').trim();
+                    const parsedIndex = Number.parseInt(rawIndex, 10);
+                    const hasSources = Array.isArray(sources) && sources.length > 0;
+                    const totalSources = hasSources ? sources.length : 0;
+
+                    if (!hasSources) {
+                      console.warn('⚠️ 출처 링크가 감지되었지만 sources 배열이 비어 있습니다.', {
+                        href,
+                        children,
+                        parsedIndex
+                      });
+                      return <span className="font-medium text-muted-foreground" title="출처 정보를 찾을 수 없습니다">{children}</span>;
+                    }
+
+                    const sourceIndex = Number.isNaN(parsedIndex)
+                      ? 0
+                      : Math.min(Math.max(parsedIndex, 0), totalSources - 1);
+
+                    const selectedSource = sources[sourceIndex];
 
                     console.log('🔗 출처 링크 처리:', {
                       href,
                       children,
-                      sourceNumber,
-                      sourceIndex,
-                      sourcesLength: sources?.length,
-                      hasSource: sources && sources[sourceIndex]
+                      rawIndex,
+                      parsedIndex,
+                      resolvedSourceIndex: sourceIndex,
+                      totalSources,
+                      hasSource: Boolean(selectedSource),
+                      selectedSource: selectedSource && {
+                        title: selectedSource.title,
+                        datasetId: selectedSource.datasetId,
+                        documentId: selectedSource.documentId,
+                        chunkId: selectedSource.chunkId
+                      }
                     });
 
-                    if (sources && sources[sourceIndex]) {
+                    if (selectedSource) {
                       return (
                         <button
                           className="inline-flex items-center gap-1 text-primary hover:text-primary/80 underline decoration-dotted underline-offset-2 cursor-pointer font-medium"
                           onClick={(e) => {
                             e.preventDefault();
-                            const source = sources[sourceIndex];
+                            const source = selectedSource;
                             console.log('🔗 출처 링크 클릭:', source);
 
                             // Knowledge Base로 이동
@@ -299,7 +336,7 @@ export function ChatBubble({
                               onSourceClick?.(source);
                             }
                           }}
-                          title={`출처: ${sources[sourceIndex].title}`}
+                          title={`출처: ${selectedSource.title}`}
                           {...props}
                         >
                           {children}
@@ -308,8 +345,12 @@ export function ChatBubble({
                       );
                     }
                     // 출처가 없으면 일반 텍스트로 표시 (디버깅 정보 포함)
-                    console.warn('⚠️ 출처를 찾을 수 없음:', { sourceNumber, sourceIndex, sourcesLength: sources?.length });
-                    return <span className="font-medium text-muted-foreground" title={`출처 ${sourceNumber}을 찾을 수 없습니다`}>{children}</span>;
+                    console.warn('⚠️ 출처를 찾을 수 없음:', {
+                      rawIndex,
+                      parsedIndex,
+                      totalSources
+                    });
+                    return <span className="font-medium text-muted-foreground" title={`출처 ${rawIndex || '?'}을 찾을 수 없습니다`}>{children}</span>;
                   }
 
                   // 일반 링크
@@ -470,36 +511,34 @@ export function ChatBubble({
           )}
 
           {/* Sources/Citations */}
-          {!isUser && sources && sources.length > 0 && (
+          {!isUser && sortedSources.length > 0 && (
             <div className="mt-3 pt-3 border-t border-border/20">
               <div className="flex items-center gap-2 text-xs text-muted-foreground mb-2 font-medium">
                 <Icon name="map-pin" size={12} className="text-primary" />
                 <span>답변 경로</span>
               </div>
               <div className="space-y-1">
-                {sources.map((source, index) => (
+                {sortedSources.map((source, index) => (
                   <button
                     key={source.id}
                     onClick={() => onSourceClick?.(source)}
                     className="w-full text-left p-2 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors group"
                   >
-                    <div className="flex items-start gap-2">
-                      <div className="text-xs font-mono text-muted-foreground mt-0.5 flex-shrink-0">
-                        [{index}]
+                    <div className="flex items-center gap-2">
+                      <div className="text-xs font-mono text-muted-foreground flex-shrink-0">
+                        [{index + 1}]
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="text-xs font-medium text-foreground truncate group-hover:text-primary">
                           {source.title}
                         </div>
-                        <div className="text-xs text-muted-foreground truncate">
-                          {source.datasetName}
-                          {source.similarity && ` • 유사도 ${(source.similarity * 100).toFixed(0)}%`}
-                        </div>
-                        <div className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                          {source.content.replace(/<[^>]*>/g, '').slice(0, 100)}...
-                        </div>
+                        {source.similarity && (
+                          <div className="text-xs text-muted-foreground">
+                            유사도 {(source.similarity * 100).toFixed(0)}%
+                          </div>
+                        )}
                       </div>
-                      <Icon name="external-link" size={12} className="text-muted-foreground group-hover:text-primary flex-shrink-0 mt-0.5" />
+                      <Icon name="external-link" size={12} className="text-muted-foreground group-hover:text-primary flex-shrink-0" />
                     </div>
                   </button>
                 ))}
